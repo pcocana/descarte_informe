@@ -437,6 +437,18 @@ footer.methodology li { margin-bottom: 4px; }
       <label title="Año desde el cual Koha registra préstamos. Antes de ese año no hay datos de circulación, aunque el ejemplar sí haya circulado">Registros Koha desde ℹ</label>
       <input type="number" id="cfgKohaInicio" value="2019" min="1990" max="2100">
     </div>
+    <div class="field">
+      <label title="Un título se evalúa por exceso de ejemplares solo si tiene al menos esta cantidad de copias">Mín. copias p/ evaluar exceso ℹ</label>
+      <input type="number" id="cfgMinCopiasExceso" value="3" min="2" max="50" step="1" onchange="if(state.meta) applyFiltros();">
+    </div>
+    <div class="field">
+      <label title="Si el promedio histórico de préstamos por copia del título es menor a este valor, se considera que hay más copias de las que la demanda real justifica">Préstamos esperados/copia ℹ</label>
+      <input type="number" id="cfgPrestamosPorCopia" value="1" min="0" max="20" step="0.5" onchange="if(state.meta) applyFiltros();">
+    </div>
+    <div class="field">
+      <label title="De un título con exceso de ejemplares, cuántas copias conservar (se priorizan las de uso más reciente / más préstamos)">Copias a conservar ℹ</label>
+      <input type="number" id="cfgCopiasConservar" value="1" min="0" max="20" step="1" onchange="if(state.meta) applyFiltros();">
+    </div>
     <button class="btn-primary" id="processBtn" onclick="processData()" style="display:none;">⚙ Procesar y generar listado</button>
     <button class="btn-danger-text" onclick="clearAll()">Limpiar todo</button>
   </div>
@@ -457,6 +469,7 @@ footer.methodology li { margin-bottom: 4px; }
         <label>Vista</label>
         <select id="filtVista" onchange="applyFiltros()">
           <option value="rapida">⚡ Acción rápida — confirmado ≥5 años (individual o por grupo)</option>
+          <option value="exceso">📚 Exceso de ejemplares (independiente de años sin uso)</option>
           <option value="candidatos">Candidatos (≥1 año sin uso o sin evidencia de préstamo)</option>
           <option value="5mas">Crítico — ≥5 años sin uso (confirmado + sin evidencia)</option>
           <option value="3a4">Alto — 3 a 4 años sin uso</option>
@@ -527,6 +540,7 @@ footer.methodology li { margin-bottom: 4px; }
       <li><strong>Años de gracia por edición reciente:</strong> las ediciones más nuevas que el umbral configurado (por defecto, 2 años) se excluyen de las vistas de candidatos, ya que aún no han tenido tiempo suficiente en la colección para juzgar su uso con justicia. No existe un número fijo establecido por ALA o IFLA como estándar universal para este criterio — la referencia más cercana es el método <strong>CREW</strong> de ALA (Continuous Review, Evaluation and Weeding), que usa una fórmula "X años de antigüedad / Y años sin uso" definida por cada biblioteca según la disciplina (por ejemplo, áreas de rápida obsolescencia como tecnología suelen usar umbrales más cortos que humanidades). El valor de 2 años aquí es un punto de partida razonable y editable, no una norma obligatoria.</li>
       <li><strong>Ejemplares sin ningún registro de préstamo:</strong> Koha solo registra circulación desde el año configurado en "Registros Koha desde" (por defecto 2019), por lo que un ejemplar sin registro no significa necesariamente que nunca haya circulado — solo que no hay evidencia desde esa fecha. En vez de excluirlos del análisis por años sin uso o inflar el número asumiendo que nunca se han prestado, se les asigna una <strong>cota mínima garantizada</strong> (año actual − año de inicio de Koha) de años sin uso, marcada explícitamente como "≥ cota mínima" en la tabla y en el Excel exportado (columna "Precisión del dato"), para distinguirlos de los casos con fecha real confirmada. Como criterio complementario para priorizar dentro de este grupo — ya que no hay dato de circulación real que ayude a decidir — se puede ordenar la tabla por <strong>antigüedad de la edición</strong>: entre dos ejemplares sin evidencia de préstamo, el de edición más antigua es un candidato más sólido a descarte por obsolescencia de contenido.</li>
       <li><strong>Confirmado por grupo:</strong> cuando un título tiene varias copias (mismas signatura + título + autor), a veces Koha solo vinculó préstamos a algunas de ellas. Si al menos una copia tiene un registro confirmado de ≥5 años sin uso, sus copias hermanas sin evidencia individual se incluyen en la vista de "Acción rápida" y se marcan como "confirmado por grupo" — no es un dato propio de esa copia puntual, sino inferido de otra copia idéntica con historial real. Esto evita que la vista de acción rápida subestime el número de candidatos solo porque el registro de préstamos no cubrió todas las copias de un mismo título.</li>
+      <li><strong>Exceso de ejemplares (criterio independiente de "años sin uso"):</strong> que una copia de un título con muchas copias se haya prestado hace poco es un indicio de que el título sigue vigente, pero no significa que todas sus copias deban conservarse — puede tratarse de un título sobre-adquirido para la demanda real. Este criterio evalúa cada título por su <strong>demanda histórica total</strong> (suma de préstamos de todas sus copias) frente a la <strong>cantidad de copias</strong> que existen: si un título tiene la cantidad mínima de copias configurada o más y el promedio de préstamos por copia es menor al umbral configurado, se marca como "sobre-provisto", se sugiere conservar solo N copias (las de más uso real) y el resto se marca como "candidato por exceso" — incluso si esa copia puntual muestra actividad reciente. Es un criterio complementario, no reemplaza el análisis por años sin uso: una copia puede aparecer marcada por ambos criterios, por uno solo, o por ninguno. Los umbrales (copias mínimas, préstamos esperados por copia, copias a conservar) son configurables y reflejan una decisión de política bibliotecaria, no un estándar externo.</li>
     </ul>
   </footer>
 
@@ -980,14 +994,75 @@ function isEnGracia(r) {
   return antiguedad >= 0 && antiguedad < gracia;
 }
 
+/* ============================================================
+   EXCESO DE EJEMPLARES — criterio independiente de "años sin uso".
+   Un título con muchas copias puede tener una sola en circulación
+   reciente y aun así sobrar ejemplares: lo relevante no es si ALGUNA
+   copia se usó, sino si la demanda histórica total del título (todas
+   sus copias sumadas) justifica la cantidad de copias que existen.
+   Se recalcula en vivo desde los controles de configuración, igual
+   que el período de gracia por edición.
+   ============================================================ */
+function computeExcesoMap() {
+  const minCopias = parseInt(document.getElementById('cfgMinCopiasExceso').value) || 3;
+  const minPrestPorCopia = parseFloat(document.getElementById('cfgPrestamosPorCopia').value);
+  const prestUmbral = isNaN(minPrestPorCopia) ? 1 : minPrestPorCopia;
+  const copiasConservar = parseInt(document.getElementById('cfgCopiasConservar').value);
+  const conservar = isNaN(copiasConservar) ? 1 : copiasConservar;
+
+  const grupos = {};
+  for (const r of state.descarte) {
+    const key = candidatoKey(r);
+    if (!grupos[key]) grupos[key] = [];
+    grupos[key].push(r);
+  }
+
+  const map = {};
+  for (const key in grupos) {
+    const copies = grupos[key];
+    const totalCopias = copies.length;
+    const totalPrestamosGrupo = copies.reduce((s, c) => s + (parseInt(c.totalPrestHistorico) || 0), 0);
+    const prestamosPorCopia = totalCopias ? round2(totalPrestamosGrupo / totalCopias) : 0;
+    const esGrupoExcedente = totalCopias >= minCopias && prestamosPorCopia < prestUmbral;
+
+    // Si es excedente, se priorizan para CONSERVAR las copias con más uso real
+    // (más préstamos históricos y, en empate, menos años sin uso); el resto
+    // queda marcado como candidato por exceso, sin importar su propio estado.
+    let ordenConservar = copies;
+    if (esGrupoExcedente) {
+      ordenConservar = [...copies].sort((a, b) => {
+        const prestDiff = (parseInt(b.totalPrestHistorico) || 0) - (parseInt(a.totalPrestHistorico) || 0);
+        if (prestDiff !== 0) return prestDiff;
+        return (a.aniosSinUso ?? 999) - (b.aniosSinUso ?? 999);
+      });
+    }
+
+    copies.forEach(c => {
+      const posicion = esGrupoExcedente ? ordenConservar.indexOf(c) : -1;
+      map[c.inventario] = {
+        esGrupoExcedente,
+        prestamosPorCopia,
+        totalCopiasGrupo: totalCopias,
+        totalPrestamosGrupo,
+        esCandidatoPorExceso: esGrupoExcedente && posicion >= conservar
+      };
+    });
+  }
+  return map;
+}
+
 function getFiltered() {
   const vista = document.getElementById('filtVista').value;
   const dewey = document.getElementById('filtDewey').value;
   const unidad = document.getElementById('filtUnidad').value;
   const orden = document.getElementById('filtOrden').value;
 
+  const excesoMap = computeExcesoMap();
+  state.descarte.forEach(r => Object.assign(r, excesoMap[r.inventario] || {}));
+
   let filtered = state.descarte;
   if (vista === 'rapida') filtered = filtered.filter(r => (r.fuenteUltimo === 'historial' && r.aniosSinUso !== null && r.aniosSinUso >= 5) || r.confirmadoPorGrupo);
+  else if (vista === 'exceso') filtered = filtered.filter(r => r.esCandidatoPorExceso);
   else if (vista === 'candidatos') filtered = filtered.filter(r => (r.aniosSinUso !== null && r.aniosSinUso >= 1) || r.fuenteUltimo === 'ninguno');
   else if (vista === '5mas') filtered = filtered.filter(r => r.aniosSinUso !== null && r.aniosSinUso >= 5);
   else if (vista === '3a4') filtered = filtered.filter(r => r.aniosSinUso !== null && r.aniosSinUso >= 3 && r.aniosSinUso < 5);
@@ -1024,6 +1099,12 @@ function applyFiltros() {
   if (vista === 'rapida') {
     banner.innerHTML = `⚡ <strong>Vista de acción rápida:</strong> incluye ejemplares con <strong>fecha real confirmada</strong> de último préstamo (${state.meta.anioActual - 5} o antes), <strong>más</strong> las copias sin registro propio que comparten signatura + título + autor con una copia confirmada — ya que Koha a veces solo registra préstamos de algunas copias de un mismo título, no de todas. Excluye el resto de "sin evidencia de préstamo" que no tiene ningún respaldo, ni siquiera indirecto, y las ediciones en período de gracia. Sigue siendo un número acotado y trazable — pensado para ejecutar sin necesitar un análisis más profundo.`;
     banner.classList.add('visible');
+  } else if (vista === 'exceso') {
+    const minCopias = parseInt(document.getElementById('cfgMinCopiasExceso').value) || 3;
+    const prestUmbral = parseFloat(document.getElementById('cfgPrestamosPorCopia').value);
+    const conservar = parseInt(document.getElementById('cfgCopiasConservar').value);
+    banner.innerHTML = `📚 <strong>Vista de exceso de ejemplares:</strong> este criterio es independiente de "años sin uso". Evalúa títulos con ${minCopias}+ copias donde el promedio histórico de préstamos por copia es menor a ${isNaN(prestUmbral)?1:prestUmbral} — es decir, hay más copias de las que la demanda real ha justificado, aunque alguna copia puntual se haya prestado hace poco. Se sugiere conservar ${isNaN(conservar)?1:conservar} copia(s) por título (las de más uso real) y marca el resto como candidato a reducir. Los umbrales son configurables arriba — no hay un estándar único para este criterio, depende de la política de cada biblioteca.`;
+    banner.classList.add('visible');
   } else {
     banner.classList.remove('visible');
   }
@@ -1036,6 +1117,8 @@ function renderKpis(filtered) {
   const confirmado5mas = filtered.filter(r => r.aniosSinUso !== null && r.aniosSinUso >= 5 && !r.esCotaMinima).length;
   const sinEvidencia = filtered.filter(r => r.esCotaMinima);
   const confirmadoPorGrupo = filtered.filter(r => r.confirmadoPorGrupo).length;
+  const candidatoPorExceso = filtered.filter(r => r.esCandidatoPorExceso).length;
+  const titulosConExceso = new Set(filtered.filter(r => r.esGrupoExcedente).map(r => candidatoKey(r))).size;
   const excluidosGracia = state._excluidosGracia || 0;
   const gracia = parseInt(document.getElementById('cfgGracia').value) || 0;
   const edadVals = sinEvidencia.map(r => r.antiguedadEdicion).filter(v => v !== null);
@@ -1046,6 +1129,7 @@ function renderKpis(filtered) {
     <div class="kpi-card"><div class="label">Metros lineales estimados</div><div class="value teal">${metros.toLocaleString('es-CL')} m</div><div class="sub">a ${cm} cm/ejemplar</div></div>
     <div class="kpi-card"><div class="label">≥5 años sin uso — confirmado</div><div class="value amber">${confirmado5mas.toLocaleString('es-CL')}</div><div class="sub">con fecha real de último préstamo</div></div>
     <div class="kpi-card"><div class="label">Confirmado por grupo</div><div class="value amber">${confirmadoPorGrupo.toLocaleString('es-CL')}</div><div class="sub">misma signatura+título+autor que una copia confirmada</div></div>
+    <div class="kpi-card"><div class="label">Candidatos por exceso de ejemplares</div><div class="value amber">${candidatoPorExceso.toLocaleString('es-CL')}</div><div class="sub">en ${titulosConExceso.toLocaleString('es-CL')} títulos sobre-provistos — criterio independiente de años sin uso</div></div>
     <div class="kpi-card"><div class="label">Sin evidencia de préstamo</div><div class="value amber">${sinEvidencia.length.toLocaleString('es-CL')}</div><div class="sub">cota mínima ≥${m.cotaMinima} años (sin registro desde ${m.kohaInicio}) — no confirmado</div></div>
     <div class="kpi-card"><div class="label">Antigüedad edición (sin evidencia)</div><div class="value">${edadProm !== null ? edadProm.toLocaleString('es-CL') + ' años' : '—'}</div><div class="sub">promedio, para priorizar dentro del grupo</div></div>
     <div class="kpi-card"><div class="label">Calidad de datos</div><div class="value" style="color:${m.dupInventarios.length || m.sinInventarioCount ? 'var(--danger)' : 'var(--teal)'}">${(m.dupInventarios.length + m.sinInventarioCount).toLocaleString('es-CL')}</div><div class="sub">inventarios duplicados / faltantes</div></div>
@@ -1064,11 +1148,12 @@ function estadoBadge(r) {
   const graciaTag = isEnGracia(r) ? ` <span class="badge muted" title="Edición reciente — dentro del período de gracia configurado, no evaluada aún para descarte">en gracia</span>` : '';
   const cotaTag = r.esCotaMinima ? ` <span class="badge amber" title="Sin registro de préstamo en Koha desde ${state.meta.kohaInicio} — no se puede confirmar si circuló antes de esa fecha. El valor de años sin uso es una COTA MÍNIMA garantizada, no un dato confirmado.">≥ cota mínima</span>` : '';
   const grupoTag = r.confirmadoPorGrupo ? ` <span class="badge danger" title="Esta copia no tiene registro propio, pero otra copia del mismo título (misma signatura + título + autor) sí tiene un préstamo confirmado con ≥5 años sin uso.">confirmado por grupo</span>` : '';
-  if (r.aniosSinUso === null) return `<span class="badge muted">Sin fecha</span>${graciaTag}`;
-  if (r.aniosSinUso >= 5) return `<span class="badge danger">≥5 años sin uso</span>${cotaTag}${grupoTag}${graciaTag}`;
-  if (r.aniosSinUso >= 3) return `<span class="badge amber">3–4 años sin uso</span>${cotaTag}${grupoTag}${graciaTag}`;
-  if (r.aniosSinUso >= 1) return `<span class="badge amber">1–2 años sin uso</span>${cotaTag}${grupoTag}${graciaTag}`;
-  return `<span class="badge teal">Activo</span>${cotaTag}${grupoTag}${graciaTag}`;
+  const excesoTag = r.esCandidatoPorExceso ? ` <span class="badge danger" title="Este título tiene ${r.totalCopiasGrupo} copias con un promedio histórico de solo ${r.prestamosPorCopia} préstamos por copia — hay más ejemplares de los que la demanda justifica, independiente de si esta copia puntual se usó hace poco.">exceso de ejemplares</span>` : '';
+  if (r.aniosSinUso === null) return `<span class="badge muted">Sin fecha</span>${graciaTag}${excesoTag}`;
+  if (r.aniosSinUso >= 5) return `<span class="badge danger">≥5 años sin uso</span>${cotaTag}${grupoTag}${graciaTag}${excesoTag}`;
+  if (r.aniosSinUso >= 3) return `<span class="badge amber">3–4 años sin uso</span>${cotaTag}${grupoTag}${graciaTag}${excesoTag}`;
+  if (r.aniosSinUso >= 1) return `<span class="badge amber">1–2 años sin uso</span>${cotaTag}${grupoTag}${graciaTag}${excesoTag}`;
+  return `<span class="badge teal">Activo</span>${cotaTag}${grupoTag}${graciaTag}${excesoTag}`;
 }
 
 const THEAD_PLANO = `<tr>
@@ -1206,7 +1291,7 @@ function exportExcel() {
   const cm = state.cmPorEjemplar;
   const m = state.meta;
 
-  const rows = [['Inventario','Topográfico','Título','Autor','Área Dewey','Año ed.','Antigüedad edición','Último préstamo','Años sin uso','Precisión del dato','Total prést. histórico','Unidad académica','Estado','Duplicado']];
+  const rows = [['Inventario','Topográfico','Título','Autor','Área Dewey','Año ed.','Antigüedad edición','Último préstamo','Años sin uso','Precisión del dato','Total prést. histórico','Unidad académica','Estado','Duplicado','Exceso de ejemplares','Copias del título','Préstamos/copia (título)']];
   filtered.forEach(r => {
     let precision;
     if (r.confirmadoPorGrupo) precision = 'Confirmado por grupo (otra copia del mismo título sí tiene fecha real)';
@@ -1216,7 +1301,8 @@ function exportExcel() {
     rows.push([
       r.inventario, r.topografico, r.titulo, r.autor, r.deweynombre, r.anioPublicacion || '', r.antiguedadEdicion ?? '',
       r.ultimoPrestamo, r.aniosSinUso ?? '', precision,
-      r.totalPrestHistorico, r.unidad_academica, r.estadoUso, r.duplicado ? 'Sí' : 'No'
+      r.totalPrestHistorico, r.unidad_academica, r.estadoUso, r.duplicado ? 'Sí' : 'No',
+      r.esCandidatoPorExceso ? 'Sí' : 'No', r.totalCopiasGrupo ?? '', r.prestamosPorCopia ?? ''
     ]);
   });
   const wb = XLSX.utils.book_new();
@@ -1261,6 +1347,19 @@ function exportExcel() {
   const titRows = [['Título', 'Autor', 'Signatura', 'Área Dewey', 'Ejemplares', 'Metros lineales est.', 'Inventarios']];
   titGroups.forEach(g => titRows.push([g.label, g.sublabel, g.topografico, g.deweynombre, g.ejemplares, round2((g.ejemplares*cm)/100), g.items.map(i => i.inventario).join(', ')]));
   XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(titRows), 'Por Título');
+
+  const gruposExceso = {};
+  filtered.forEach(r => { if (r.esGrupoExcedente) { const key = candidatoKey(r); if (!gruposExceso[key]) gruposExceso[key] = r; } });
+  if (Object.keys(gruposExceso).length > 0) {
+    const excesoRows = [['Título', 'Autor', 'Signatura', 'Copias totales', 'Préstamos totales (histórico)', 'Préstamos/copia', 'Copias sugeridas a conservar', 'Copias candidatas a reducir', 'Inventarios candidatos a reducir']];
+    Object.values(gruposExceso).forEach(r => {
+      const grupo = state.descarte.filter(x => candidatoKey(x) === candidatoKey(r));
+      const candidatos = grupo.filter(x => x.esCandidatoPorExceso);
+      const conservar = parseInt(document.getElementById('cfgCopiasConservar').value);
+      excesoRows.push([r.titulo, r.autor, r.topografico, r.totalCopiasGrupo, r.totalPrestamosGrupo, r.prestamosPorCopia, isNaN(conservar) ? 1 : conservar, candidatos.length, candidatos.map(c => c.inventario).join(', ')]);
+    });
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(excesoRows), 'Exceso de Ejemplares');
+  }
 
   if (m.dupInventarios.length > 0) {
     const dupRows = [['Inventarios duplicados detectados en el catálogo — revisar antes de ejecutar el descarte']];
