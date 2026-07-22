@@ -1,0 +1,1193 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Descarte · Módulo de Evaluación de Colecciones · PUCV</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+<style>
+:root {
+  --stone-900: #2B2620;
+  --stone-700: #4A4338;
+  --stone-500: #7A7060;
+  --stone-300: #C9BFAC;
+  --paper: #EFEAE1;
+  --paper-card: #FBF9F5;
+  --border: #DDD5C7;
+  --rust: #B5502E;
+  --rust-dark: #8F3E22;
+  --rust-pale: #F5E3DB;
+  --teal: #3E6E64;
+  --teal-pale: #E1EBE8;
+  --amber: #C08A2E;
+  --amber-pale: #F6ECD8;
+  --danger: #A8342A;
+  --danger-pale: #F5E0DD;
+  --radius: 10px;
+  --radius-sm: 6px;
+  --shadow: 0 1px 2px rgba(43,38,32,0.06), 0 4px 16px rgba(43,38,32,0.06);
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  background: var(--paper);
+  color: var(--stone-900);
+  font-family: 'Inter', sans-serif;
+  font-size: 14px;
+  line-height: 1.5;
+}
+h1, h2, h3, .display {
+  font-family: 'Fraunces', serif;
+  font-weight: 600;
+  color: var(--stone-900);
+  letter-spacing: -0.01em;
+}
+.mono { font-family: 'JetBrains Mono', monospace; }
+a { color: var(--rust); }
+
+/* ---------- Header ---------- */
+.topbar {
+  background: var(--stone-900);
+  color: var(--paper);
+  padding: 22px 32px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+}
+.topbar .brand {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+.stamp {
+  width: 52px; height: 52px;
+  border: 2.5px dashed var(--rust);
+  border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  transform: rotate(-8deg);
+  flex-shrink: 0;
+  color: var(--rust);
+  font-family: 'Fraunces', serif;
+  font-weight: 700;
+  font-size: 10px;
+  text-align: center;
+  line-height: 1.1;
+  letter-spacing: 0.02em;
+}
+.topbar h1 { color: #fff; font-size: 21px; margin: 0; }
+.topbar .subtitle { color: var(--stone-300); font-size: 12.5px; margin-top: 2px; }
+.topbar .tag {
+  font-size: 11px;
+  color: var(--stone-300);
+  border: 1px solid rgba(255,255,255,0.25);
+  padding: 4px 10px;
+  border-radius: 999px;
+  white-space: nowrap;
+}
+
+.wrap { max-width: 1240px; margin: 0 auto; padding: 28px 32px 60px; }
+
+.section-title {
+  font-size: 13px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--stone-500);
+  margin: 32px 0 12px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.section-title::after { content:''; flex:1; height:1px; background: var(--border); }
+.section-title:first-child { margin-top: 0; }
+
+/* ---------- Cards / uploads ---------- */
+.grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
+@media (max-width: 760px) { .grid2 { grid-template-columns: 1fr; } }
+
+.upload-card {
+  background: var(--paper-card);
+  border: 1.5px dashed var(--border);
+  border-radius: var(--radius);
+  padding: 20px;
+  display: block;
+  cursor: pointer;
+  transition: border-color .15s, background .15s;
+  position: relative;
+}
+.upload-card:hover { border-color: var(--rust); }
+.upload-card.dragover { border-color: var(--rust); background: var(--rust-pale); }
+.upload-card.loaded { border-style: solid; border-color: var(--teal); background: var(--teal-pale); }
+.upload-card input[type=file] { display: none; }
+.upload-card .icon { font-size: 22px; }
+.upload-card .title { font-weight: 600; font-size: 14.5px; margin: 8px 0 4px; }
+.upload-card .req {
+  display: inline-block;
+  font-size: 10.5px;
+  font-weight: 700;
+  color: var(--rust-dark);
+  background: var(--rust-pale);
+  padding: 2px 7px;
+  border-radius: 4px;
+  margin-left: 6px;
+  vertical-align: middle;
+  letter-spacing: 0.03em;
+}
+.upload-card .sub { color: var(--stone-500); font-size: 12px; margin-bottom: 10px; }
+.upload-card .btn {
+  display: inline-block;
+  background: var(--stone-900);
+  color: #fff;
+  padding: 7px 14px;
+  border-radius: var(--radius-sm);
+  font-size: 12.5px;
+  font-weight: 500;
+}
+.upload-card .info {
+  display: none;
+  margin-top: 10px;
+  font-size: 12.5px;
+  color: var(--teal);
+  font-weight: 600;
+}
+.upload-card.loaded .info { display: block; }
+
+.warn-panel, .note-panel {
+  background: var(--amber-pale);
+  border: 1px solid var(--amber);
+  border-radius: var(--radius-sm);
+  padding: 12px 16px;
+  font-size: 12.5px;
+  margin-top: 14px;
+  display: none;
+}
+.warn-panel.visible, .note-panel.visible { display: block; }
+.warn-panel ul, .note-panel ul { margin: 6px 0 0; padding-left: 18px; }
+.note-panel { background: var(--teal-pale); border-color: var(--teal); }
+
+/* ---------- Config bar ---------- */
+.config-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 18px;
+  align-items: flex-end;
+  background: var(--paper-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 16px 20px;
+  margin-top: 18px;
+}
+.field label {
+  display: block;
+  font-size: 11.5px;
+  color: var(--stone-500);
+  margin-bottom: 5px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.field select, .field input {
+  font-family: inherit;
+  font-size: 13px;
+  padding: 7px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: #fff;
+  color: var(--stone-900);
+}
+.field input[type=number] { width: 90px; }
+
+.btn-primary {
+  background: var(--rust);
+  color: #fff;
+  border: none;
+  padding: 11px 22px;
+  border-radius: var(--radius-sm);
+  font-family: inherit;
+  font-size: 13.5px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background .15s;
+}
+.btn-primary:hover { background: var(--rust-dark); }
+.btn-secondary {
+  background: #fff;
+  color: var(--stone-900);
+  border: 1px solid var(--border);
+  padding: 9px 16px;
+  border-radius: var(--radius-sm);
+  font-family: inherit;
+  font-size: 12.5px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.btn-secondary:hover { border-color: var(--stone-500); }
+.btn-danger-text {
+  background: none; border: none; color: var(--stone-500);
+  font-size: 12px; text-decoration: underline; cursor: pointer;
+}
+
+/* ---------- KPIs + ruler ---------- */
+.kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  gap: 14px;
+  margin-top: 18px;
+}
+.kpi-card {
+  background: var(--paper-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 16px 18px;
+}
+.kpi-card .label { font-size: 11.5px; color: var(--stone-500); text-transform: uppercase; letter-spacing: 0.04em; }
+.kpi-card .value { font-family: 'Fraunces', serif; font-size: 28px; font-weight: 600; margin-top: 4px; }
+.kpi-card .value.rust { color: var(--rust); }
+.kpi-card .value.teal { color: var(--teal); }
+.kpi-card .value.amber { color: var(--amber); }
+.kpi-card .sub { font-size: 11.5px; color: var(--stone-500); margin-top: 3px; }
+
+.ruler-card {
+  background: var(--paper-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 18px 20px;
+  margin-top: 14px;
+}
+.ruler-card .label { font-size: 11.5px; color: var(--stone-500); text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 10px; }
+.ruler-track {
+  position: relative;
+  height: 34px;
+  background: repeating-linear-gradient(90deg, var(--border), var(--border) 1px, transparent 1px, transparent calc(100%/20));
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  overflow: hidden;
+}
+.ruler-fill {
+  position: absolute; left:0; top:0; bottom:0;
+  background: linear-gradient(90deg, var(--rust), var(--rust-dark));
+  transition: width .4s ease;
+  display: flex; align-items: center; justify-content: flex-end;
+  padding-right: 8px;
+}
+.ruler-fill span { color: #fff; font-size: 11.5px; font-weight: 700; font-family: 'JetBrains Mono', monospace; }
+.ruler-scale { display:flex; justify-content: space-between; font-size: 10.5px; color: var(--stone-500); margin-top: 4px; font-family:'JetBrains Mono',monospace; }
+
+/* ---------- Filters + table ---------- */
+.filter-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px;
+  align-items: flex-end;
+  margin-top: 20px;
+}
+.table-wrap {
+  background: var(--paper-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  margin-top: 14px;
+  overflow: hidden;
+}
+.table-toolbar {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 12px 18px;
+  border-bottom: 1px solid var(--border);
+  flex-wrap: wrap; gap: 10px;
+}
+.table-toolbar .count { font-size: 13px; font-weight: 600; }
+.table-scroll { overflow-x: auto; max-height: 560px; }
+table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+thead th {
+  position: sticky; top: 0;
+  background: var(--stone-900);
+  color: var(--paper);
+  text-align: left;
+  padding: 10px 12px;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  white-space: nowrap;
+  z-index: 1;
+}
+tbody td { padding: 9px 12px; border-bottom: 1px solid var(--border); vertical-align: top; }
+tbody tr:hover { background: var(--rust-pale); }
+tbody tr.dup { background: var(--danger-pale); }
+
+.badge {
+  display: inline-block;
+  padding: 2px 9px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.badge.danger { background: var(--danger-pale); color: var(--danger); }
+.badge.amber { background: var(--amber-pale); color: var(--amber); }
+.badge.teal { background: var(--teal-pale); color: var(--teal); }
+.badge.muted { background: var(--paper); color: var(--stone-500); }
+
+.empty-state {
+  text-align: center;
+  padding: 60px 20px;
+  color: var(--stone-500);
+}
+.empty-state .icon { font-size: 34px; margin-bottom: 10px; }
+
+tr.group-row { cursor: pointer; background: var(--paper); font-weight: 600; }
+tr.group-row:hover { background: var(--rust-pale); }
+tr.group-row td { border-bottom: 1px solid var(--border); }
+.group-arrow { display: inline-block; width: 14px; color: var(--rust); font-size: 11px; }
+.group-count { color: var(--stone-500); font-weight: 400; font-size: 11.5px; }
+tr.group-detail-row { display: none; }
+tr.group-detail-row > td { padding: 0; border-bottom: 1px solid var(--border); }
+.nested-table-wrap { padding: 6px 12px 14px 40px; background: #fff; }
+.nested-table-wrap .nested-note { font-size: 11px; color: var(--stone-500); margin-bottom: 6px; }
+table.nested { width: 100%; border-collapse: collapse; font-size: 12px; }
+table.nested th {
+  text-align: left; padding: 6px 10px; font-size: 10px; text-transform: uppercase;
+  letter-spacing: 0.03em; color: var(--stone-500); border-bottom: 1px solid var(--border);
+}
+table.nested td { padding: 6px 10px; border-bottom: 1px solid var(--border); }
+table.nested tr.dup { background: var(--danger-pale); }
+
+.loader-overlay {
+  display: none;
+  position: fixed; inset: 0;
+  background: rgba(43,38,32,0.55);
+  align-items: center; justify-content: center;
+  z-index: 50;
+}
+.loader-overlay.active { display: flex; }
+.loader-box {
+  background: var(--paper-card);
+  border-radius: var(--radius);
+  padding: 28px 36px;
+  text-align: center;
+}
+.loader-box .stamp { margin: 0 auto 14px; animation: spin 1.4s linear infinite; }
+@keyframes spin { from{transform:rotate(-8deg);} to{transform:rotate(352deg);} }
+
+footer.methodology {
+  margin-top: 40px;
+  padding-top: 20px;
+  border-top: 1px solid var(--border);
+  font-size: 12.5px;
+  color: var(--stone-500);
+}
+footer.methodology h3 { font-size: 14px; margin-bottom: 8px; }
+footer.methodology ul { padding-left: 18px; }
+footer.methodology li { margin-bottom: 4px; }
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <div class="brand">
+    <div class="stamp">PARA<br>DESCARTE</div>
+    <div>
+      <h1>Módulo de Descarte</h1>
+      <div class="subtitle">Evaluación y listado de ejemplares candidatos a descarte — PUCV</div>
+    </div>
+  </div>
+  <div class="tag">Independiente de Analítica Bibliotecaria</div>
+</div>
+
+<div class="wrap">
+
+  <div class="section-title">1 · Cargar archivos</div>
+  <div class="grid2">
+    <label class="upload-card" id="dropCol" for="inputCatalogo" ondragover="onDragOver(event,'dropCol')" ondragleave="onDragLeave('dropCol')" ondrop="onDrop(event,'catalogo')">
+      <span class="icon">📚</span>
+      <div class="title">Archivo de Catálogo <span class="req">requiere Nº Inventario</span></div>
+      <div class="sub">Debe incluir: Inventario, Nº Clasificación, Título, Autor, Año, Unidad académica<br>Formatos: .xlsx · .xls · .csv</div>
+      <input type="file" id="inputCatalogo" accept=".xlsx,.xls,.csv" onchange="onFileSelect(event,'catalogo')">
+      <span class="btn">📁 Seleccionar archivo</span>
+      <div class="info" id="infoCatalogo"></div>
+    </label>
+
+    <label class="upload-card" id="dropPrest" for="inputPrestamos" ondragover="onDragOver(event,'dropPrest')" ondragleave="onDragLeave('dropPrest')" ondrop="onDrop(event,'prestamos')">
+      <span class="icon">🔄</span>
+      <div class="title">Archivo de Préstamos <span class="req">requiere Inventario</span></div>
+      <div class="sub">Debe incluir: Fecha, Inventario, Título, Nº Clasificación<br>Formatos: .xlsx · .xls · .csv</div>
+      <input type="file" id="inputPrestamos" accept=".xlsx,.xls,.csv" onchange="onFileSelect(event,'prestamos')">
+      <span class="btn">📁 Seleccionar archivo</span>
+      <div class="info" id="infoPrestamos"></div>
+    </label>
+  </div>
+
+  <div class="warn-panel" id="warnPanel"></div>
+  <div class="note-panel" id="notePanel"></div>
+
+  <div class="config-bar">
+    <div class="field">
+      <label>cm por ejemplar</label>
+      <input type="number" id="cfgCm" value="2.3" min="0.5" max="10" step="0.1">
+    </div>
+    <div class="field">
+      <label>Año de referencia</label>
+      <input type="number" id="cfgAnio" value="2026" min="2020" max="2100">
+    </div>
+    <button class="btn-primary" id="processBtn" onclick="processData()" style="display:none;">⚙ Procesar y generar listado</button>
+    <button class="btn-danger-text" onclick="clearAll()">Limpiar todo</button>
+  </div>
+
+  <div id="resultsSection" style="display:none;">
+
+    <div class="section-title">2 · Resumen</div>
+    <div class="kpi-grid" id="kpiGrid"></div>
+    <div class="ruler-card">
+      <div class="label">📏 Metros lineales estimados liberables (vista actual)</div>
+      <div class="ruler-track"><div class="ruler-fill" id="rulerFill"><span id="rulerLabel"></span></div></div>
+      <div class="ruler-scale" id="rulerScale"></div>
+    </div>
+
+    <div class="section-title">3 · Listado de candidatos a descarte</div>
+    <div class="filter-bar">
+      <div class="field">
+        <label>Vista</label>
+        <select id="filtVista" onchange="applyFiltros()">
+          <option value="candidatos">Candidatos (≥1 año sin uso o sin registro)</option>
+          <option value="5mas">Crítico — ≥5 años sin uso</option>
+          <option value="3a4">Alto — 3 a 4 años sin uso</option>
+          <option value="sinreg">Sin registro de préstamo</option>
+          <option value="todos">Todo el catálogo</option>
+        </select>
+      </div>
+      <div class="field">
+        <label>Área Dewey</label>
+        <select id="filtDewey" onchange="applyFiltros()"><option value="">Todas</option></select>
+      </div>
+      <div class="field">
+        <label>Unidad académica</label>
+        <select id="filtUnidad" onchange="applyFiltros()"><option value="">Todas</option></select>
+      </div>
+      <div class="field">
+        <label>Ordenar por</label>
+        <select id="filtOrden" onchange="applyFiltros()">
+          <option value="sinuso">Años sin uso (mayor primero)</option>
+          <option value="inventario">Nº Inventario</option>
+          <option value="titulo">Título (A–Z)</option>
+        </select>
+      </div>
+      <div class="field">
+        <label>Agrupar por</label>
+        <select id="filtGroupBy" onchange="applyFiltros()">
+          <option value="none">Sin agrupar (1 fila = 1 ejemplar)</option>
+          <option value="titulo">Título (desplegable)</option>
+          <option value="dewey">Área Dewey (desplegable)</option>
+        </select>
+      </div>
+    </div>
+
+    <div class="table-wrap">
+      <div class="table-toolbar">
+        <div class="count" id="totalLabel">0 ejemplares</div>
+        <div style="display:flex;gap:8px;">
+          <button class="btn-secondary" onclick="exportExcel()">📥 Exportar Excel (listado completo)</button>
+          <button class="btn-secondary" onclick="exportCSV()">📄 Exportar CSV (solo inventarios)</button>
+        </div>
+      </div>
+      <div class="table-scroll">
+        <table>
+          <thead id="tableHead"></thead>
+          <tbody id="tableBody"></tbody>
+        </table>
+      </div>
+    </div>
+
+  </div>
+
+  <div class="empty-state" id="emptyState">
+    <div class="icon">📦</div>
+    <div>Carga el archivo de catálogo y el de préstamos para comenzar la evaluación de descarte.</div>
+  </div>
+
+  <footer class="methodology">
+    <h3>Metodología</h3>
+    <ul>
+      <li>Cada fila del catálogo se identifica de forma unívoca por su <strong>número de inventario</strong> — no se agrupa ni se estima: 1 fila = 1 ejemplar físico real.</li>
+      <li>El cruce con el historial de préstamos también se hace por inventario exacto (sin depender de título o topográfico).</li>
+      <li>"Años sin uso" = año de referencia − año del último préstamo registrado para ese inventario. Si nunca tiene préstamos registrados, se marca "Sin registro".</li>
+      <li>Los metros lineales estimados = cantidad de ejemplares en la vista actual × cm por ejemplar (editable arriba).</li>
+      <li>Los inventarios duplicados o las filas sin número de inventario se señalan como advertencia de calidad de datos y no deberían usarse para ejecutar el descarte físico sin revisión.</li>
+    </ul>
+  </footer>
+
+</div>
+
+<div class="loader-overlay" id="loader">
+  <div class="loader-box">
+    <div class="stamp">⚙</div>
+    <div id="loaderText">Procesando…</div>
+  </div>
+</div>
+
+<script>
+/* ============================================================
+   ESTADO
+   ============================================================ */
+let state = {
+  colRaw: null, prestRaw: null,
+  colData: [], prestData: [],
+  descarte: [], meta: null,
+  cmPorEjemplar: 2.3
+};
+
+/* ============================================================
+   CLASIFICACIÓN DEWEY (reutilizada de Analítica Bibliotecaria)
+   ============================================================ */
+const DEWEY_AREAS = {
+  0:'Generalidades',1:'Filosofía y Psicología',2:'Religión',
+  3:'Ciencias Sociales',4:'Lengua y Lingüística',5:'Ciencias Puras',
+  6:'Tecnología',7:'Arte y Recreación',8:'Literatura',9:'Historia y Geografía'
+};
+function extractDewey(topog) {
+  const clean = (topog || '').trim();
+  const m = clean.match(/^(\d+(?:\.\d+)?)\s+([A-Za-z]+)?\s*(\d{4})?/);
+  if (!m) return { nombre: 'Sin clasificar' };
+  const dewey = m[1];
+  const centena = Math.floor(parseFloat(dewey) / 100) * 100;
+  return { nombre: DEWEY_AREAS[Math.floor(centena/100)] || 'Sin clasificar' };
+}
+
+/* ============================================================
+   UTILS
+   ============================================================ */
+function normalizeHeader(h) {
+  return (h || '').toString().toLowerCase().trim()
+    .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9\s]/g, ' ')
+    .replace(/\s+/g, ' ').trim();
+}
+function detectColumn(headers, aliases) {
+  const H = headers.map(normalizeHeader);
+  for (const a of aliases) {
+    const idx = H.findIndex(h => h === normalizeHeader(a));
+    if (idx !== -1) return idx;
+  }
+  for (const a of aliases) {
+    const an = normalizeHeader(a);
+    const idx = H.findIndex(h => h.includes(an));
+    if (idx !== -1) return idx;
+  }
+  return -1;
+}
+function parseDate(val) {
+  if (!val) return null;
+  if (val instanceof Date) return isNaN(val.getTime()) ? null : val;
+  const str = val.toString().trim();
+  let m = str.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})$/);
+  if (m) return new Date(+m[3], +m[2]-1, +m[1]);
+  m = str.match(/^(\d{4})[\/\-](\d{2})[\/\-](\d{2})/);
+  if (m) return new Date(+m[1], +m[2]-1, +m[3]);
+  const num = parseFloat(str);
+  if (!isNaN(num) && num > 40000 && num < 55000) {
+    const d = new Date((num - 25569) * 86400 * 1000);
+    return isNaN(d.getTime()) ? null : d;
+  }
+  const d = new Date(str);
+  return isNaN(d.getTime()) ? null : d;
+}
+function round2(n) { return Math.round(n * 100) / 100; }
+function normalizeTitulo(str) {
+  if (!str) return '';
+  return str.toString().toLowerCase()
+    .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9\s]/g, ' ')
+    .replace(/\s+/g, ' ').trim();
+}
+
+/* ============================================================
+   AGRUPACIÓN (solo para visualización — el listado plano y los
+   exports siguen basados en 1 fila = 1 inventario)
+   ============================================================ */
+function groupByTitulo(rows) {
+  const groups = {};
+  const order = [];
+  for (const r of rows) {
+    const key = normalizeTitulo(r.titulo) || `__sin_titulo_${r.inventario}`;
+    if (!groups[key]) { groups[key] = []; order.push(key); }
+    groups[key].push(r);
+  }
+  return order.map(key => {
+    const items = groups[key];
+    const base = items[0];
+    const validos = items.map(i => i.aniosSinUso).filter(v => v !== null);
+    const minSinUso = validos.length ? Math.min(...validos) : null;
+    const maxSinUso = validos.length ? Math.max(...validos) : null;
+    const estados = {};
+    items.forEach(i => { estados[i.estadoUso] = (estados[i.estadoUso] || 0) + 1; });
+    return {
+      label: base.titulo, sublabel: base.autor, deweynombre: base.deweynombre,
+      ejemplares: items.length, minSinUso, maxSinUso, estados, items,
+      dupInGroup: items.some(i => i.duplicado)
+    };
+  }).sort((a, b) => b.ejemplares - a.ejemplares);
+}
+
+function groupByDewey(rows) {
+  const groups = {};
+  for (const r of rows) {
+    const key = r.deweynombre;
+    if (!groups[key]) groups[key] = [];
+    groups[key].push(r);
+  }
+  return Object.entries(groups).map(([area, items]) => {
+    const titulosUnicos = new Set(items.map(i => normalizeTitulo(i.titulo))).size;
+    const estados = {};
+    items.forEach(i => { estados[i.estadoUso] = (estados[i.estadoUso] || 0) + 1; });
+    return {
+      label: area, sublabel: `${titulosUnicos.toLocaleString('es-CL')} títulos únicos`,
+      ejemplares: items.length, estados, items,
+      dupInGroup: items.some(i => i.duplicado)
+    };
+  }).sort((a, b) => b.ejemplares - a.ejemplares);
+}
+
+function estadosResumen(estados) {
+  const orden = ['≥5 años sin uso', '3–4 años sin uso', '1–2 años sin uso', 'Activo', 'Sin registro', 'Sin fecha'];
+  return orden.filter(e => estados[e]).map(e => `${estados[e]} ${e.toLowerCase()}`).join(' · ');
+}
+
+/* ============================================================
+   CARGA DE ARCHIVOS
+   ============================================================ */
+function onDragOver(e, id) { e.preventDefault(); document.getElementById(id).classList.add('dragover'); }
+function onDragLeave(id) { document.getElementById(id).classList.remove('dragover'); }
+function onDrop(e, tipo) {
+  e.preventDefault();
+  document.getElementById(tipo === 'catalogo' ? 'dropCol' : 'dropPrest').classList.remove('dragover');
+  const file = e.dataTransfer.files[0];
+  if (file) readFile(file, tipo);
+}
+function onFileSelect(e, tipo) {
+  const file = e.target.files[0];
+  if (file) readFile(file, tipo);
+}
+
+function readFile(file, tipo) {
+  showLoader(`Leyendo archivo de ${tipo === 'catalogo' ? 'catálogo' : 'préstamos'}…`);
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    try {
+      let rows;
+      if (file.name.toLowerCase().endsWith('.csv')) {
+        const wb = XLSX.read(e.target.result, { type: 'string' });
+        rows = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { header: 1, raw: false, defval: '' });
+      } else {
+        const wb = XLSX.read(e.target.result, { type: 'array', cellDates: true });
+        rows = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { header: 1, raw: false, defval: '' });
+      }
+      finishFileLoad(rows, tipo, file);
+    } catch (err) {
+      hideLoader();
+      alert('Error al leer el archivo: ' + err.message);
+    }
+  };
+  if (file.name.toLowerCase().endsWith('.csv')) reader.readAsText(file, 'UTF-8');
+  else reader.readAsArrayBuffer(file);
+}
+
+const CATALOGO_ALIASES = {
+  inventario: ['inventario','n inventario','no inventario','nro inventario','num inventario','n° inventario','nº inventario'],
+  topografico: ['n clasificacion','nº clasificación','n° clasificacion','clasificacion','signatura','topografico'],
+  tipo_recurso: ['tipo de recurso','tipo recurso'],
+  autor: ['autor'],
+  titulo: ['titulo','título'],
+  anio: ['ed ano','ed/año','edicion','ano','anio','año'],
+  prestamos: ['prestamos','préstamos'],
+  estado: ['estado de perdida','estado'],
+  unidad_academica: ['unidad academica','unidad_academica','unidad académica']
+};
+const PRESTAMOS_ALIASES = {
+  inventario: CATALOGO_ALIASES.inventario,
+  fecha: ['fecha'],
+  topografico: CATALOGO_ALIASES.topografico,
+  titulo: ['titulo','título'],
+  autor: ['autor'],
+  tipo_item: ['tipo de item','tipo item','tipo de recurso'],
+  unidad_academica: CATALOGO_ALIASES.unidad_academica,
+  prestamos: ['prestamos','préstamos']
+};
+
+function parseSheet(rows, aliasSet, tipo) {
+  const warnings = [];
+  if (!rows || rows.length < 2) return { data: [], warnings: ['Archivo vacío o sin datos'], mapping: [] };
+  const headers = rows[0].map(h => (h || '').toString());
+  const colMap = {};
+  const mapping = [];
+  for (const [field, aliases] of Object.entries(aliasSet)) {
+    const idx = detectColumn(headers, aliases);
+    colMap[field] = idx;
+    mapping.push({ field, found: idx !== -1, original: idx !== -1 ? headers[idx] : '—' });
+    if (idx === -1) warnings.push(`No se detectó la columna "${field}" en el archivo de ${tipo}`);
+  }
+
+  const data = [];
+  let emptyRows = 0;
+  for (let i = 1; i < rows.length; i++) {
+    const row = rows[i];
+    if (!row || row.every(c => c === '' || c === null || c === undefined)) { emptyRows++; continue; }
+    const rec = {};
+    for (const [field, idx] of Object.entries(colMap)) {
+      rec[field] = idx !== -1 ? (row[idx] !== undefined && row[idx] !== null ? row[idx].toString().trim() : '') : '';
+    }
+    if (tipo === 'préstamos' && rec.fecha) {
+      const d = parseDate(rec.fecha);
+      rec._fecha = d;
+      rec._anio = d ? d.getFullYear() : null;
+    }
+    data.push(rec);
+  }
+  if (emptyRows > 0) warnings.push(`Se omitieron ${emptyRows} filas vacías del archivo de ${tipo}`);
+  return { data, warnings, mapping };
+}
+
+function finishFileLoad(rows, tipo, file) {
+  if (tipo === 'catalogo') {
+    const parsed = parseSheet(rows, CATALOGO_ALIASES, 'catálogo');
+    state.colRaw = rows; state.colData = parsed.data;
+    const sinInv = parsed.data.filter(r => !r.inventario).length;
+    document.getElementById('infoCatalogo').textContent = `✅ ${file.name} — ${parsed.data.length.toLocaleString('es-CL')} registros`;
+    document.getElementById('dropCol').classList.add('loaded');
+    if (parsed.mapping.find(m => m.field === 'inventario' && !m.found)) {
+      alert('⚠ No se detectó una columna de INVENTARIO en el archivo de catálogo. Este dato es obligatorio para generar el listado de descarte.');
+    }
+    state._warnCol = parsed.warnings.concat(sinInv > 0 ? [`${sinInv} filas del catálogo no tienen número de inventario y quedarán excluidas del listado ejecutable`] : []);
+  } else {
+    const parsed = parseSheet(rows, PRESTAMOS_ALIASES, 'préstamos');
+    state.prestRaw = rows; state.prestData = parsed.data;
+    document.getElementById('infoPrestamos').textContent = `✅ ${file.name} — ${parsed.data.length.toLocaleString('es-CL')} registros`;
+    document.getElementById('dropPrest').classList.add('loaded');
+    if (parsed.mapping.find(m => m.field === 'inventario' && !m.found)) {
+      alert('⚠ No se detectó una columna de INVENTARIO en el archivo de préstamos. El cruce por inventario no será posible.');
+    }
+    state._warnPrest = parsed.warnings;
+  }
+  const allWarnings = [...(state._warnCol || []), ...(state._warnPrest || [])];
+  const warnPanel = document.getElementById('warnPanel');
+  if (allWarnings.length) {
+    warnPanel.innerHTML = '<strong>⚠ Advertencias de lectura</strong><ul>' + allWarnings.map(w => `<li>${w}</li>`).join('') + '</ul>';
+    warnPanel.classList.add('visible');
+  } else {
+    warnPanel.classList.remove('visible');
+  }
+  if (state.colData.length) document.getElementById('processBtn').style.display = 'inline-block';
+  hideLoader();
+}
+
+/* ============================================================
+   PROCESAMIENTO: cruce exclusivamente por Nº DE INVENTARIO
+   ============================================================ */
+function processData() {
+  if (!state.colData.length) { alert('Cargue el archivo de catálogo primero'); return; }
+  showLoader('Cruzando por número de inventario y calculando estado de uso…');
+  setTimeout(() => {
+    try {
+      const anioActual = parseInt(document.getElementById('cfgAnio').value) || new Date().getFullYear();
+      const cmPorEjemplar = parseFloat(document.getElementById('cfgCm').value) || 2.3;
+      state.cmPorEjemplar = cmPorEjemplar;
+
+      // Mapa inventario -> { ultimoAnio, total }
+      const prestMap = {};
+      let prestSinInventario = 0;
+      for (const p of state.prestData) {
+        const inv = (p.inventario || '').trim();
+        if (!inv) { prestSinInventario++; continue; }
+        if (!prestMap[inv]) prestMap[inv] = { ultimoAnio: null, total: 0 };
+        prestMap[inv].total += parseInt(p.prestamos) || 1;
+        const anio = p._anio;
+        if (anio && anio >= 2000 && anio <= anioActual) {
+          if (prestMap[inv].ultimoAnio === null || anio > prestMap[inv].ultimoAnio) prestMap[inv].ultimoAnio = anio;
+        }
+      }
+
+      const seen = new Set();
+      const dupInventarios = new Set();
+      let sinInventarioCount = 0;
+      const rows = [];
+
+      for (const r of state.colData) {
+        const inv = (r.inventario || '').trim();
+        if (!inv) { sinInventarioCount++; continue; }
+        if (seen.has(inv)) dupInventarios.add(inv);
+        seen.add(inv);
+
+        const info = prestMap[inv];
+        const ultimoAnio = info ? info.ultimoAnio : null;
+        const totalPrestHistorico = info ? info.total : 0;
+        const prestamosCatalogo = parseInt(r.prestamos) || 0;
+
+        let aniosSinUso = null, ultimoPrestamoTxt = '—', fuenteUltimo;
+        if (ultimoAnio !== null) {
+          aniosSinUso = anioActual - ultimoAnio;
+          ultimoPrestamoTxt = ultimoAnio;
+          fuenteUltimo = 'historial';
+        } else if (totalPrestHistorico === 0 && prestamosCatalogo === 0) {
+          fuenteUltimo = 'ninguno';
+          ultimoPrestamoTxt = 'Sin registro';
+        } else {
+          fuenteUltimo = 'sin_fecha';
+          ultimoPrestamoTxt = 'Sin fecha';
+        }
+
+        let estadoUso;
+        if (fuenteUltimo === 'ninguno') estadoUso = 'Sin registro';
+        else if (aniosSinUso === null) estadoUso = 'Sin fecha';
+        else if (aniosSinUso >= 5) estadoUso = '≥5 años sin uso';
+        else if (aniosSinUso >= 3) estadoUso = '3–4 años sin uso';
+        else if (aniosSinUso >= 1) estadoUso = '1–2 años sin uso';
+        else estadoUso = 'Activo';
+
+        const dd = extractDewey(r.topografico);
+
+        rows.push({
+          inventario: inv,
+          topografico: r.topografico || '—',
+          titulo: r.titulo || 'Sin título',
+          autor: r.autor || 'Sin autor',
+          deweynombre: dd.nombre,
+          anioPublicacion: parseInt(r.anio) || null,
+          unidad_academica: r.unidad_academica || 'Sin unidad asignada',
+          ultimoPrestamo: ultimoPrestamoTxt,
+          aniosSinUso,
+          totalPrestHistorico: Math.max(totalPrestHistorico, prestamosCatalogo),
+          estadoUso,
+          fuenteUltimo,
+          duplicado: false
+        });
+      }
+      for (const row of rows) if (dupInventarios.has(row.inventario)) row.duplicado = true;
+
+      state.descarte = rows;
+      state.meta = {
+        anioActual, cmPorEjemplar,
+        dupInventarios: [...dupInventarios],
+        sinInventarioCount,
+        prestSinInventario
+      };
+
+      renderQualityNote();
+      populateFilterOptions();
+      applyFiltros();
+
+      document.getElementById('resultsSection').style.display = 'block';
+      document.getElementById('emptyState').style.display = 'none';
+      hideLoader();
+    } catch (err) {
+      hideLoader();
+      alert('Error al procesar: ' + err.message);
+      console.error(err);
+    }
+  }, 50);
+}
+
+function renderQualityNote() {
+  const m = state.meta;
+  const notePanel = document.getElementById('notePanel');
+  const parts = [];
+  parts.push(`Cruce realizado por <strong>número de inventario exacto</strong> — ${state.descarte.length.toLocaleString('es-CL')} ejemplares únicos identificados.`);
+  if (m.sinInventarioCount > 0) parts.push(`<strong style="color:var(--danger)">${m.sinInventarioCount} filas del catálogo no tienen inventario</strong> y fueron excluidas del listado.`);
+  if (m.dupInventarios.length > 0) parts.push(`<strong style="color:var(--danger)">${m.dupInventarios.length} números de inventario aparecen duplicados</strong> en el catálogo (marcados en rojo en la tabla) — revisar antes de ejecutar el descarte.`);
+  if (m.prestSinInventario > 0) parts.push(`${m.prestSinInventario} registros de préstamo no tenían inventario y no pudieron cruzarse.`);
+  notePanel.innerHTML = parts.join(' ');
+  notePanel.classList.add('visible');
+}
+
+/* ============================================================
+   FILTROS + RENDER
+   ============================================================ */
+function populateFilterOptions() {
+  const deweySel = document.getElementById('filtDewey');
+  const unidadSel = document.getElementById('filtUnidad');
+  const deweyOpts = [...new Set(state.descarte.map(r => r.deweynombre))].sort();
+  const unidadOpts = [...new Set(state.descarte.map(r => r.unidad_academica))].sort();
+  deweySel.innerHTML = '<option value="">Todas</option>' + deweyOpts.map(d => `<option value="${d}">${d}</option>`).join('');
+  unidadSel.innerHTML = '<option value="">Todas</option>' + unidadOpts.map(u => `<option value="${u}">${u}</option>`).join('');
+}
+
+function getFiltered() {
+  const vista = document.getElementById('filtVista').value;
+  const dewey = document.getElementById('filtDewey').value;
+  const unidad = document.getElementById('filtUnidad').value;
+  const orden = document.getElementById('filtOrden').value;
+
+  let filtered = state.descarte;
+  if (vista === 'candidatos') filtered = filtered.filter(r => (r.aniosSinUso !== null && r.aniosSinUso >= 1) || r.fuenteUltimo === 'ninguno');
+  else if (vista === '5mas') filtered = filtered.filter(r => r.aniosSinUso !== null && r.aniosSinUso >= 5);
+  else if (vista === '3a4') filtered = filtered.filter(r => r.aniosSinUso !== null && r.aniosSinUso >= 3 && r.aniosSinUso < 5);
+  else if (vista === 'sinreg') filtered = filtered.filter(r => r.fuenteUltimo === 'ninguno');
+
+  if (dewey) filtered = filtered.filter(r => r.deweynombre === dewey);
+  if (unidad) filtered = filtered.filter(r => r.unidad_academica === unidad);
+
+  if (orden === 'sinuso') filtered = [...filtered].sort((a, b) => (b.aniosSinUso ?? 999) - (a.aniosSinUso ?? 999));
+  else if (orden === 'inventario') filtered = [...filtered].sort((a, b) => a.inventario.localeCompare(b.inventario));
+  else if (orden === 'titulo') filtered = [...filtered].sort((a, b) => a.titulo.localeCompare(b.titulo));
+
+  return filtered;
+}
+
+function applyFiltros() {
+  const filtered = getFiltered();
+  renderKpis(filtered);
+  renderTable(filtered);
+}
+
+function renderKpis(filtered) {
+  const m = state.meta;
+  const cm = state.cmPorEjemplar;
+  const metros = round2((filtered.length * cm) / 100);
+  const sinUso5mas = filtered.filter(r => r.aniosSinUso !== null && r.aniosSinUso >= 5).length;
+  const sinRegistro = filtered.filter(r => r.fuenteUltimo === 'ninguno').length;
+
+  document.getElementById('kpiGrid').innerHTML = `
+    <div class="kpi-card"><div class="label">Ejemplares en vista</div><div class="value rust">${filtered.length.toLocaleString('es-CL')}</div><div class="sub">de ${state.descarte.length.toLocaleString('es-CL')} totales identificados</div></div>
+    <div class="kpi-card"><div class="label">Metros lineales estimados</div><div class="value teal">${metros.toLocaleString('es-CL')} m</div><div class="sub">a ${cm} cm/ejemplar</div></div>
+    <div class="kpi-card"><div class="label">≥5 años sin uso</div><div class="value amber">${sinUso5mas.toLocaleString('es-CL')}</div><div class="sub">dentro de la vista actual</div></div>
+    <div class="kpi-card"><div class="label">Sin registro de préstamo</div><div class="value">${sinRegistro.toLocaleString('es-CL')}</div><div class="sub">dentro de la vista actual</div></div>
+    <div class="kpi-card"><div class="label">Calidad de datos</div><div class="value" style="color:${m.dupInventarios.length || m.sinInventarioCount ? 'var(--danger)' : 'var(--teal)'}">${(m.dupInventarios.length + m.sinInventarioCount).toLocaleString('es-CL')}</div><div class="sub">inventarios duplicados / faltantes</div></div>
+  `;
+
+  const rulerFill = document.getElementById('rulerFill');
+  const maxRef = Math.max(metros * 1.25, 10);
+  const pctFill = Math.min(100, (metros / maxRef) * 100);
+  rulerFill.style.width = pctFill + '%';
+  document.getElementById('rulerLabel').textContent = metros.toLocaleString('es-CL') + ' m';
+  document.getElementById('rulerScale').innerHTML = `<span>0 m</span><span>${round2(maxRef).toLocaleString('es-CL')} m</span>`;
+}
+
+function estadoBadge(r) {
+  if (r.fuenteUltimo === 'ninguno') return `<span class="badge danger">Sin registro</span>`;
+  if (r.aniosSinUso === null) return `<span class="badge muted">Sin fecha</span>`;
+  if (r.aniosSinUso >= 5) return `<span class="badge danger">≥5 años sin uso</span>`;
+  if (r.aniosSinUso >= 3) return `<span class="badge amber">3–4 años sin uso</span>`;
+  if (r.aniosSinUso >= 1) return `<span class="badge amber">1–2 años sin uso</span>`;
+  return `<span class="badge teal">Activo</span>`;
+}
+
+const THEAD_PLANO = `<tr>
+  <th></th><th>Inventario</th><th>Topográfico</th><th>Título</th><th>Autor</th>
+  <th>Área Dewey</th><th>Año ed.</th><th>Último préstamo</th><th>Años sin uso</th>
+  <th>Total prést. histórico</th><th>Unidad académica</th><th>Estado</th>
+</tr>`;
+const THEAD_TITULO = `<tr>
+  <th></th><th>Título</th><th>Autor</th><th>Área Dewey</th><th>Ejemplares</th>
+  <th>Años sin uso (rango)</th><th colspan="2">Desglose de estados</th>
+</tr>`;
+const THEAD_DEWEY = `<tr>
+  <th></th><th>Área Dewey</th><th>Títulos únicos</th><th>Ejemplares</th>
+  <th colspan="4">Desglose de estados</th>
+</tr>`;
+
+function nestedRowHtml(r, skipTitulo) {
+  return `<tr class="${r.duplicado ? 'dup' : ''}">
+    <td class="mono">${r.inventario}${r.duplicado ? ' <span class="badge danger" title="Inventario duplicado en el catálogo">dup</span>' : ''}</td>
+    <td class="mono" style="white-space:nowrap">${r.topografico}</td>
+    ${skipTitulo ? '' : `<td style="max-width:220px;white-space:normal">${r.titulo}</td><td style="color:var(--stone-500)">${r.autor}</td>`}
+    <td class="mono" style="color:var(--stone-500)">${r.anioPublicacion || '—'}</td>
+    <td class="mono">${r.ultimoPrestamo}</td>
+    <td>${r.aniosSinUso ?? '—'}</td>
+    <td class="mono" style="text-align:center">${r.totalPrestHistorico > 0 ? r.totalPrestHistorico.toLocaleString('es-CL') : '—'}</td>
+    <td>${r.unidad_academica}</td>
+    <td>${estadoBadge(r)}</td>
+  </tr>`;
+}
+
+function renderTable(filtered) {
+  const mode = document.getElementById('filtGroupBy').value;
+  const head = document.getElementById('tableHead');
+  const body = document.getElementById('tableBody');
+
+  if (mode === 'none') {
+    head.innerHTML = THEAD_PLANO;
+    document.getElementById('totalLabel').textContent = `${filtered.length.toLocaleString('es-CL')} ejemplares`;
+    if (!filtered.length) {
+      body.innerHTML = '<tr><td colspan="12" style="text-align:center;padding:30px;color:var(--stone-500)">No hay ejemplares que coincidan con los filtros seleccionados</td></tr>';
+      return;
+    }
+    body.innerHTML = filtered.map(r => `
+      <tr class="${r.duplicado ? 'dup' : ''}">
+        <td></td>
+        <td class="mono">${r.inventario}${r.duplicado ? ' <span class="badge danger" title="Inventario duplicado en el catálogo">dup</span>' : ''}</td>
+        <td class="mono" style="white-space:nowrap">${r.topografico}</td>
+        <td style="max-width:240px;white-space:normal">${r.titulo}</td>
+        <td style="color:var(--stone-500)">${r.autor}</td>
+        <td>${r.deweynombre}</td>
+        <td class="mono" style="color:var(--stone-500)">${r.anioPublicacion || '—'}</td>
+        <td class="mono">${r.ultimoPrestamo}</td>
+        <td>${r.aniosSinUso ?? '—'}</td>
+        <td class="mono" style="text-align:center">${r.totalPrestHistorico > 0 ? r.totalPrestHistorico.toLocaleString('es-CL') : '—'}</td>
+        <td>${r.unidad_academica}</td>
+        <td>${estadoBadge(r)}</td>
+      </tr>
+    `).join('');
+    return;
+  }
+
+  const groups = mode === 'titulo' ? groupByTitulo(filtered) : groupByDewey(filtered);
+  document.getElementById('totalLabel').textContent =
+    `${filtered.length.toLocaleString('es-CL')} ejemplares en ${groups.length.toLocaleString('es-CL')} ${mode === 'titulo' ? 'títulos' : 'áreas Dewey'}`;
+
+  if (mode === 'titulo') head.innerHTML = THEAD_TITULO;
+  else head.innerHTML = THEAD_DEWEY;
+
+  if (!groups.length) {
+    body.innerHTML = '<tr><td colspan="8" style="text-align:center;padding:30px;color:var(--stone-500)">No hay resultados que coincidan con los filtros seleccionados</td></tr>';
+    return;
+  }
+
+  let html = '';
+  groups.forEach((g, i) => {
+    const dupWarn = g.dupInGroup ? ' <span class="badge danger" title="Este grupo contiene inventarios duplicados">dup</span>' : '';
+    if (mode === 'titulo') {
+      const rango = g.minSinUso === null ? 'Sin fecha' : (g.minSinUso === g.maxSinUso ? `${g.minSinUso}` : `${g.minSinUso}–${g.maxSinUso}`);
+      html += `<tr class="group-row" onclick="toggleGroup(${i})">
+        <td><span class="group-arrow" id="arrow-${i}">▸</span></td>
+        <td style="max-width:260px;white-space:normal">${g.label}${dupWarn}</td>
+        <td style="color:var(--stone-500);font-weight:400">${g.sublabel}</td>
+        <td style="font-weight:400">${g.deweynombre}</td>
+        <td class="mono">${g.ejemplares}</td>
+        <td>${rango}</td>
+        <td colspan="2" style="font-weight:400;color:var(--stone-500);font-size:11.5px">${estadosResumen(g.estados)}</td>
+      </tr>
+      <tr class="group-detail-row" id="detail-${i}"><td colspan="8">
+        <div class="nested-table-wrap">
+          <div class="nested-note">${g.ejemplares} ejemplar(es) de este título — Inventarios:</div>
+          <table class="nested">
+            <thead><tr><th>Inventario</th><th>Topográfico</th><th>Año ed.</th><th>Último préstamo</th><th>Años sin uso</th><th>Total prést.</th><th>Unidad académica</th><th>Estado</th></tr></thead>
+            <tbody>${g.items.map(r => nestedRowHtml(r, true)).join('')}</tbody>
+          </table>
+        </div>
+      </td></tr>`;
+    } else {
+      html += `<tr class="group-row" onclick="toggleGroup(${i})">
+        <td><span class="group-arrow" id="arrow-${i}">▸</span></td>
+        <td>${g.label}${dupWarn}</td>
+        <td class="mono">${g.sublabel}</td>
+        <td class="mono">${g.ejemplares}</td>
+        <td colspan="4" style="font-weight:400;color:var(--stone-500);font-size:11.5px">${estadosResumen(g.estados)}</td>
+      </tr>
+      <tr class="group-detail-row" id="detail-${i}"><td colspan="7">
+        <div class="nested-table-wrap">
+          <div class="nested-note">${g.ejemplares} ejemplar(es) en esta área Dewey — Inventarios:</div>
+          <table class="nested">
+            <thead><tr><th>Inventario</th><th>Topográfico</th><th>Título</th><th>Autor</th><th>Año ed.</th><th>Último préstamo</th><th>Años sin uso</th><th>Total prést.</th><th>Unidad académica</th><th>Estado</th></tr></thead>
+            <tbody>${g.items.map(r => nestedRowHtml(r, false)).join('')}</tbody>
+          </table>
+        </div>
+      </td></tr>`;
+    }
+  });
+  body.innerHTML = html;
+}
+
+function toggleGroup(i) {
+  const row = document.getElementById('detail-' + i);
+  const arrow = document.getElementById('arrow-' + i);
+  if (!row) return;
+  const isHidden = row.style.display === '' || row.style.display === 'none';
+  row.style.display = isHidden ? 'table-row' : 'none';
+  if (arrow) arrow.textContent = isHidden ? '▾' : '▸';
+}
+
+/* ============================================================
+   EXPORT
+   ============================================================ */
+function exportExcel() {
+  const filtered = getFiltered();
+  if (!filtered.length) { alert('No hay datos en la vista actual para exportar'); return; }
+  const cm = state.cmPorEjemplar;
+  const m = state.meta;
+
+  const rows = [['Inventario','Topográfico','Título','Autor','Área Dewey','Año ed.','Último préstamo','Años sin uso','Total prést. histórico','Unidad académica','Estado','Duplicado']];
+  filtered.forEach(r => rows.push([
+    r.inventario, r.topografico, r.titulo, r.autor, r.deweynombre, r.anioPublicacion || '',
+    r.ultimoPrestamo, r.aniosSinUso ?? '', r.totalPrestHistorico, r.unidad_academica, r.estadoUso, r.duplicado ? 'Sí' : 'No'
+  ]));
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(rows), 'Listado de Descarte');
+
+  const metros = round2((filtered.length * cm) / 100);
+  const resumenRows = [
+    ['Resumen — Módulo de Descarte', ''],
+    ['Fecha de generación', new Date().toLocaleDateString('es-CL')],
+    ['Año de referencia', m.anioActual],
+    ['Ejemplares en el listado', filtered.length],
+    ['cm por ejemplar', cm],
+    ['Metros lineales estimados liberables', metros],
+    ['', ''],
+    ['Inventarios duplicados detectados (catálogo)', m.dupInventarios.length],
+    ['Filas del catálogo sin inventario (excluidas)', m.sinInventarioCount],
+    ['Registros de préstamo sin inventario', m.prestSinInventario],
+    ['', ''],
+    ['Nota', 'El cruce se realiza exclusivamente por número de inventario exacto. Cada fila del listado corresponde a un ejemplar físico único, identificable de forma unívoca para su retiro administrativo y físico.']
+  ];
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(resumenRows), 'Resumen');
+
+  const byDewey = {};
+  filtered.forEach(r => { byDewey[r.deweynombre] = (byDewey[r.deweynombre] || 0) + 1; });
+  const deweyRows = [['Área Dewey', 'Ejemplares', 'Metros lineales est.']];
+  Object.entries(byDewey).sort((a,b) => b[1]-a[1]).forEach(([area, n]) => deweyRows.push([area, n, round2((n*cm)/100)]));
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(deweyRows), 'Por Área Dewey');
+
+  const byUnidad = {};
+  filtered.forEach(r => { byUnidad[r.unidad_academica] = (byUnidad[r.unidad_academica] || 0) + 1; });
+  const unidadRows = [['Unidad académica', 'Ejemplares', 'Metros lineales est.']];
+  Object.entries(byUnidad).sort((a,b) => b[1]-a[1]).forEach(([u, n]) => unidadRows.push([u, n, round2((n*cm)/100)]));
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(unidadRows), 'Por Unidad Académica');
+
+  const titGroups = groupByTitulo(filtered);
+  const titRows = [['Título', 'Autor', 'Área Dewey', 'Ejemplares', 'Metros lineales est.', 'Inventarios']];
+  titGroups.forEach(g => titRows.push([g.label, g.sublabel, g.deweynombre, g.ejemplares, round2((g.ejemplares*cm)/100), g.items.map(i => i.inventario).join(', ')]));
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(titRows), 'Por Título');
+
+  if (m.dupInventarios.length > 0) {
+    const dupRows = [['Inventarios duplicados detectados en el catálogo — revisar antes de ejecutar el descarte']];
+    m.dupInventarios.forEach(inv => dupRows.push([inv]));
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(dupRows), 'Alertas de calidad');
+  }
+
+  XLSX.writeFile(wb, `Descarte_PUCV_${new Date().toISOString().slice(0,10)}.xlsx`);
+}
+
+function exportCSV() {
+  const filtered = getFiltered();
+  if (!filtered.length) { alert('No hay datos en la vista actual para exportar'); return; }
+  const lines = ['Inventario;Topografico;Titulo;Estado'];
+  filtered.forEach(r => lines.push(`${r.inventario};${r.topografico};"${(r.titulo||'').replace(/"/g,'""')}";${r.estadoUso}`));
+  const blob = new Blob(['\uFEFF' + lines.join('\n')], { type: 'text/csv;charset=utf-8;' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `Descarte_Inventarios_PUCV_${new Date().toISOString().slice(0,10)}.csv`;
+  a.click();
+}
+
+/* ============================================================
+   LOADER / CLEAR
+   ============================================================ */
+function showLoader(text) {
+  document.getElementById('loaderText').textContent = text;
+  document.getElementById('loader').classList.add('active');
+}
+function hideLoader() { document.getElementById('loader').classList.remove('active'); }
+
+function clearAll() {
+  if (!confirm('¿Limpiar todos los datos cargados?')) return;
+  state = { colRaw: null, prestRaw: null, colData: [], prestData: [], descarte: [], meta: null, cmPorEjemplar: 2.3 };
+  ['dropCol','dropPrest'].forEach(id => document.getElementById(id).classList.remove('loaded'));
+  ['infoCatalogo','infoPrestamos'].forEach(id => document.getElementById(id).textContent = '');
+  document.getElementById('warnPanel').classList.remove('visible');
+  document.getElementById('notePanel').classList.remove('visible');
+  document.getElementById('processBtn').style.display = 'none';
+  document.getElementById('resultsSection').style.display = 'none';
+  document.getElementById('emptyState').style.display = 'block';
+  document.getElementById('inputCatalogo').value = '';
+  document.getElementById('inputPrestamos').value = '';
+}
+</script>
+
+</body>
+</html>
