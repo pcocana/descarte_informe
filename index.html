@@ -467,13 +467,14 @@ footer.methodology li { margin-bottom: 4px; }
     <div class="filter-bar">
       <div class="field">
         <label>Vista</label>
-        <select id="filtVista" onchange="applyFiltros()">
+        <select id="filtVista" onchange="onVistaChange()">
           <option value="rapida">⚡ Acción rápida — confirmado ≥5 años (individual o por grupo)</option>
           <option value="exceso">📚 Exceso de ejemplares (independiente de años sin uso)</option>
           <option value="candidatos">Candidatos (≥1 año sin uso o sin evidencia de préstamo)</option>
           <option value="5mas">Crítico — ≥5 años sin uso (confirmado + sin evidencia)</option>
           <option value="3a4">Alto — 3 a 4 años sin uso</option>
           <option value="sinreg">Sin evidencia de préstamo (cota mínima, sin dato real)</option>
+          <option value="masprestados">🔥 Más prestados — mayor circulación (inverso al descarte)</option>
           <option value="todos">Todo el catálogo</option>
         </select>
       </div>
@@ -486,9 +487,14 @@ footer.methodology li { margin-bottom: 4px; }
         <select id="filtUnidad" onchange="applyFiltros()"><option value="">Todas</option></select>
       </div>
       <div class="field">
+        <label>Ubicación física</label>
+        <select id="filtUbicacion" onchange="applyFiltros()"><option value="">Todas</option></select>
+      </div>
+      <div class="field">
         <label>Ordenar por</label>
         <select id="filtOrden" onchange="applyFiltros()">
           <option value="sinuso">Años sin uso (mayor primero)</option>
+          <option value="prestamos">Préstamos históricos (mayor primero)</option>
           <option value="antiguedad">Antigüedad de edición (mayor primero)</option>
           <option value="inventario">Nº Inventario</option>
           <option value="titulo">Título (A–Z)</option>
@@ -538,6 +544,7 @@ footer.methodology li { margin-bottom: 4px; }
       <li>Los metros lineales estimados = cantidad de ejemplares en la vista actual × cm por ejemplar (editable arriba).</li>
       <li>Los inventarios duplicados o las filas sin número de inventario se señalan como advertencia de calidad de datos y no deberían usarse para ejecutar el descarte físico sin revisión.</li>
       <li><strong>Años de gracia por edición reciente:</strong> las ediciones más nuevas que el umbral configurado (por defecto, 2 años) se excluyen de las vistas de candidatos, ya que aún no han tenido tiempo suficiente en la colección para juzgar su uso con justicia. No existe un número fijo establecido por ALA o IFLA como estándar universal para este criterio — la referencia más cercana es el método <strong>CREW</strong> de ALA (Continuous Review, Evaluation and Weeding), que usa una fórmula "X años de antigüedad / Y años sin uso" definida por cada biblioteca según la disciplina (por ejemplo, áreas de rápida obsolescencia como tecnología suelen usar umbrales más cortos que humanidades). El valor de 2 años aquí es un punto de partida razonable y editable, no una norma obligatoria.</li>
+      <li><strong>Ubicación física:</strong> se toma de la columna "Espacio, Estantería o Acceso" del catálogo. Las celdas vacías se asumen como <strong>Colección General (estantería abierta)</strong>, ya que es el criterio por defecto del sistema para los ejemplares sin una ubicación especial asignada (Mesón de Circulación, Alta Demanda, Fondo Cultural, etc.).</li>
       <li><strong>Ejemplares sin ningún registro de préstamo:</strong> Koha solo registra circulación desde el año configurado en "Registros Koha desde" (por defecto 2019), por lo que un ejemplar sin registro no significa necesariamente que nunca haya circulado — solo que no hay evidencia desde esa fecha. En vez de excluirlos del análisis por años sin uso o inflar el número asumiendo que nunca se han prestado, se les asigna una <strong>cota mínima garantizada</strong> (año actual − año de inicio de Koha) de años sin uso, marcada explícitamente como "≥ cota mínima" en la tabla y en el Excel exportado (columna "Precisión del dato"), para distinguirlos de los casos con fecha real confirmada. Como criterio complementario para priorizar dentro de este grupo — ya que no hay dato de circulación real que ayude a decidir — se puede ordenar la tabla por <strong>antigüedad de la edición</strong>: entre dos ejemplares sin evidencia de préstamo, el de edición más antigua es un candidato más sólido a descarte por obsolescencia de contenido.</li>
       <li><strong>Confirmado por grupo:</strong> cuando un título tiene varias copias (mismas signatura + título + autor), a veces Koha solo vinculó préstamos a algunas de ellas. Si al menos una copia tiene un registro confirmado de ≥5 años sin uso, sus copias hermanas sin evidencia individual se incluyen en la vista de "Acción rápida" y se marcan como "confirmado por grupo" — no es un dato propio de esa copia puntual, sino inferido de otra copia idéntica con historial real. Esto evita que la vista de acción rápida subestime el número de candidatos solo porque el registro de préstamos no cubrió todas las copias de un mismo título.</li>
       <li><strong>Exceso de ejemplares (criterio independiente de "años sin uso"):</strong> que una copia de un título con muchas copias se haya prestado hace poco es un indicio de que el título sigue vigente, pero no significa que todas sus copias deban conservarse — puede tratarse de un título sobre-adquirido para la demanda real. Este criterio evalúa cada título por su <strong>demanda histórica total</strong> (suma de préstamos de todas sus copias) frente a la <strong>cantidad de copias</strong> que existen: si un título tiene la cantidad mínima de copias configurada o más y el promedio de préstamos por copia es menor al umbral configurado, se marca como "sobre-provisto", se sugiere conservar solo N copias (las de más uso real) y el resto se marca como "candidato por exceso" — incluso si esa copia puntual muestra actividad reciente. Es un criterio complementario, no reemplaza el análisis por años sin uso: una copia puede aparecer marcada por ambos criterios, por uno solo, o por ninguno. Los umbrales (copias mínimas, préstamos esperados por copia, copias a conservar) son configurables y reflejan una decisión de política bibliotecaria, no un estándar externo.</li>
@@ -642,7 +649,7 @@ function candidatoKey(r) {
    AGRUPACIÓN (solo para visualización — el listado plano y los
    exports siguen basados en 1 fila = 1 inventario)
    ============================================================ */
-function groupByTitulo(rows) {
+function groupByTitulo(rows, sortBy) {
   const groups = {};
   const order = [];
   for (const r of rows) {
@@ -650,7 +657,7 @@ function groupByTitulo(rows) {
     if (!groups[key]) { groups[key] = []; order.push(key); }
     groups[key].push(r);
   }
-  return order.map(key => {
+  const result = order.map(key => {
     const items = groups[key];
     const base = items[0];
     const validos = items.map(i => i.aniosSinUso).filter(v => v !== null);
@@ -658,13 +665,18 @@ function groupByTitulo(rows) {
     const maxSinUso = validos.length ? Math.max(...validos) : null;
     const estados = {};
     items.forEach(i => { estados[i.estadoUso] = (estados[i.estadoUso] || 0) + 1; });
+    const totalPrestamos = items.reduce((s, i) => s + (parseInt(i.totalPrestHistorico) || 0), 0);
+    const ubicaciones = [...new Set(items.map(i => i.ubicacion))];
     return {
       label: base.titulo, sublabel: base.autor, deweynombre: base.deweynombre,
       topografico: base.topografico,
-      ejemplares: items.length, minSinUso, maxSinUso, estados, items,
+      ejemplares: items.length, minSinUso, maxSinUso, estados, items, totalPrestamos, ubicaciones,
       dupInGroup: items.some(i => i.duplicado)
     };
-  }).sort((a, b) => b.ejemplares - a.ejemplares);
+  });
+  return sortBy === 'prestamos'
+    ? result.sort((a, b) => b.totalPrestamos - a.totalPrestamos)
+    : result.sort((a, b) => b.ejemplares - a.ejemplares);
 }
 
 function groupByDewey(rows) {
@@ -740,7 +752,8 @@ const CATALOGO_ALIASES = {
   anio: ['ed ano','ed/año','edicion','ano','anio','año'],
   prestamos: ['prestamos','préstamos'],
   estado: ['estado de perdida','estado'],
-  unidad_academica: ['unidad academica','unidad_academica','unidad académica']
+  unidad_academica: ['unidad academica','unidad_academica','unidad académica'],
+  ubicacion: ['espacio, estantería o acceso','espacio estanteria o acceso','espacio, estanteria o acceso','ubicacion fisica','ubicación física','ubicacion','ubicación','espacio']
 };
 const PRESTAMOS_ALIASES = {
   inventario: CATALOGO_ALIASES.inventario,
@@ -894,6 +907,9 @@ function processData() {
 
         const dd = extractDewey(r.topografico);
         const anioPublicacion = parseInt(r.anio) || null;
+        const ubicacionRaw = (r.ubicacion || '').toString().trim();
+        // Celdas vacías = colección general en estantería abierta (criterio del usuario)
+        const ubicacion = ubicacionRaw || 'Colección General (estantería abierta)';
 
         rows.push({
           inventario: inv,
@@ -904,6 +920,7 @@ function processData() {
           anioPublicacion,
           antiguedadEdicion: anioPublicacion ? anioActual - anioPublicacion : null,
           unidad_academica: r.unidad_academica || 'Sin unidad asignada',
+          ubicacion,
           ultimoPrestamo: ultimoPrestamoTxt,
           aniosSinUso,
           esCotaMinima,
@@ -981,10 +998,13 @@ function renderQualityNote() {
 function populateFilterOptions() {
   const deweySel = document.getElementById('filtDewey');
   const unidadSel = document.getElementById('filtUnidad');
+  const ubicacionSel = document.getElementById('filtUbicacion');
   const deweyOpts = [...new Set(state.descarte.map(r => r.deweynombre))].sort();
   const unidadOpts = [...new Set(state.descarte.map(r => r.unidad_academica))].sort();
+  const ubicacionOpts = [...new Set(state.descarte.map(r => r.ubicacion))].sort();
   deweySel.innerHTML = '<option value="">Todas</option>' + deweyOpts.map(d => `<option value="${d}">${d}</option>`).join('');
   unidadSel.innerHTML = '<option value="">Todas</option>' + unidadOpts.map(u => `<option value="${u}">${u}</option>`).join('');
+  ubicacionSel.innerHTML = '<option value="">Todas</option>' + ubicacionOpts.map(u => `<option value="${u}">${u}</option>`).join('');
 }
 
 function isEnGracia(r) {
@@ -1055,6 +1075,7 @@ function getFiltered() {
   const vista = document.getElementById('filtVista').value;
   const dewey = document.getElementById('filtDewey').value;
   const unidad = document.getElementById('filtUnidad').value;
+  const ubicacion = document.getElementById('filtUbicacion').value;
   const orden = document.getElementById('filtOrden').value;
 
   const excesoMap = computeExcesoMap();
@@ -1067,12 +1088,16 @@ function getFiltered() {
   else if (vista === '5mas') filtered = filtered.filter(r => r.aniosSinUso !== null && r.aniosSinUso >= 5);
   else if (vista === '3a4') filtered = filtered.filter(r => r.aniosSinUso !== null && r.aniosSinUso >= 3 && r.aniosSinUso < 5);
   else if (vista === 'sinreg') filtered = filtered.filter(r => r.fuenteUltimo === 'ninguno');
+  // Vista inversa: en lugar de candidatos a descarte, muestra los ejemplares con
+  // mayor circulación histórica — útil para justificar reposición, refuerzo de
+  // encuadernación, o compra de copias adicionales de títulos muy demandados.
+  else if (vista === 'masprestados') filtered = filtered.filter(r => (parseInt(r.totalPrestHistorico) || 0) > 0);
 
   // Excluir ediciones muy recientes de las vistas de "candidatos": no han tenido
   // tiempo suficiente en la biblioteca para evaluarse con justicia. No aplica a
-  // "Todo el catálogo", donde se muestran igual (marcadas) para transparencia.
+  // "Todo el catálogo" ni a "Más prestados", donde el criterio de gracia no es relevante.
   state._excluidosGracia = 0;
-  if (vista !== 'todos') {
+  if (vista !== 'todos' && vista !== 'masprestados') {
     const antes = filtered.length;
     filtered = filtered.filter(r => !isEnGracia(r));
     state._excluidosGracia = antes - filtered.length;
@@ -1080,13 +1105,35 @@ function getFiltered() {
 
   if (dewey) filtered = filtered.filter(r => r.deweynombre === dewey);
   if (unidad) filtered = filtered.filter(r => r.unidad_academica === unidad);
+  if (ubicacion) filtered = filtered.filter(r => r.ubicacion === ubicacion);
 
   if (orden === 'sinuso') filtered = [...filtered].sort((a, b) => (b.aniosSinUso ?? 999) - (a.aniosSinUso ?? 999));
+  else if (orden === 'prestamos') filtered = [...filtered].sort((a, b) => (parseInt(b.totalPrestHistorico) || 0) - (parseInt(a.totalPrestHistorico) || 0));
   else if (orden === 'inventario') filtered = [...filtered].sort((a, b) => a.inventario.localeCompare(b.inventario));
   else if (orden === 'titulo') filtered = [...filtered].sort((a, b) => a.titulo.localeCompare(b.titulo));
   else if (orden === 'antiguedad') filtered = [...filtered].sort((a, b) => (b.antiguedadEdicion ?? -1) - (a.antiguedadEdicion ?? -1));
 
   return filtered;
+}
+
+// Ajusta orden y agrupación a valores útiles al entrar/salir de la vista
+// "Más prestados", sin pisar una elección manual del usuario en otros campos.
+function onVistaChange() {
+  const vista = document.getElementById('filtVista').value;
+  const ordenSel = document.getElementById('filtOrden');
+  const groupSel = document.getElementById('filtGroupBy');
+  if (vista === 'masprestados') {
+    state._ordenPrevio = ordenSel.value;
+    state._groupPrevio = groupSel.value;
+    ordenSel.value = 'prestamos';
+    groupSel.value = 'titulo';
+  } else if (state._ordenPrevio !== undefined) {
+    ordenSel.value = state._ordenPrevio;
+    groupSel.value = state._groupPrevio;
+    state._ordenPrevio = undefined;
+    state._groupPrevio = undefined;
+  }
+  applyFiltros();
 }
 
 function applyFiltros() {
@@ -1104,6 +1151,9 @@ function applyFiltros() {
     const prestUmbral = parseFloat(document.getElementById('cfgPrestamosPorCopia').value);
     const conservar = parseInt(document.getElementById('cfgCopiasConservar').value);
     banner.innerHTML = `📚 <strong>Vista de exceso de ejemplares:</strong> este criterio es independiente de "años sin uso". Evalúa títulos con ${minCopias}+ copias donde el promedio histórico de préstamos por copia es menor a ${isNaN(prestUmbral)?1:prestUmbral} — es decir, hay más copias de las que la demanda real ha justificado, aunque alguna copia puntual se haya prestado hace poco. Se sugiere conservar ${isNaN(conservar)?1:conservar} copia(s) por título (las de más uso real) y marca el resto como candidato a reducir. Los umbrales son configurables arriba — no hay un estándar único para este criterio, depende de la política de cada biblioteca.`;
+    banner.classList.add('visible');
+  } else if (vista === 'masprestados') {
+    banner.innerHTML = `🔥 <strong>Vista de mayor circulación (inversa al descarte):</strong> muestra los ejemplares con al menos un préstamo histórico registrado, ordenados de mayor a menor uso. No aplica años de gracia por edición ni ningún criterio de "sin uso" — es la lista contraria a los candidatos a descarte. Con "Agrupar por: Título" (activado por defecto en esta vista) se consolidan las copias de un mismo título en una sola fila con el total de préstamos sumado, evitando que un título con varios ejemplares aparezca repetido. Útil para justificar compra de copias adicionales, refuerzo de encuadernación o reposición de ejemplares deteriorados por uso.`;
     banner.classList.add('visible');
   } else {
     banner.classList.remove('visible');
@@ -1124,24 +1174,46 @@ function renderKpis(filtered) {
   const edadVals = sinEvidencia.map(r => r.antiguedadEdicion).filter(v => v !== null);
   const edadProm = edadVals.length ? Math.round(edadVals.reduce((a,b) => a+b, 0) / edadVals.length) : null;
 
-  document.getElementById('kpiGrid').innerHTML = `
-    <div class="kpi-card"><div class="label">Ejemplares en vista</div><div class="value rust">${filtered.length.toLocaleString('es-CL')}</div><div class="sub">de ${state.descarte.length.toLocaleString('es-CL')} totales identificados</div></div>
-    <div class="kpi-card"><div class="label">Metros lineales estimados</div><div class="value teal">${metros.toLocaleString('es-CL')} m</div><div class="sub">a ${cm} cm/ejemplar</div></div>
-    <div class="kpi-card"><div class="label">≥5 años sin uso — confirmado</div><div class="value amber">${confirmado5mas.toLocaleString('es-CL')}</div><div class="sub">con fecha real de último préstamo</div></div>
-    <div class="kpi-card"><div class="label">Confirmado por grupo</div><div class="value amber">${confirmadoPorGrupo.toLocaleString('es-CL')}</div><div class="sub">misma signatura+título+autor que una copia confirmada</div></div>
-    <div class="kpi-card"><div class="label">Candidatos por exceso de ejemplares</div><div class="value amber">${candidatoPorExceso.toLocaleString('es-CL')}</div><div class="sub">en ${titulosConExceso.toLocaleString('es-CL')} títulos sobre-provistos — criterio independiente de años sin uso</div></div>
-    <div class="kpi-card"><div class="label">Sin evidencia de préstamo</div><div class="value amber">${sinEvidencia.length.toLocaleString('es-CL')}</div><div class="sub">cota mínima ≥${m.cotaMinima} años (sin registro desde ${m.kohaInicio}) — no confirmado</div></div>
-    <div class="kpi-card"><div class="label">Antigüedad edición (sin evidencia)</div><div class="value">${edadProm !== null ? edadProm.toLocaleString('es-CL') + ' años' : '—'}</div><div class="sub">promedio, para priorizar dentro del grupo</div></div>
-    <div class="kpi-card"><div class="label">Calidad de datos</div><div class="value" style="color:${m.dupInventarios.length || m.sinInventarioCount ? 'var(--danger)' : 'var(--teal)'}">${(m.dupInventarios.length + m.sinInventarioCount).toLocaleString('es-CL')}</div><div class="sub">inventarios duplicados / faltantes</div></div>
-    <div class="kpi-card"><div class="label">Excluidos por edición reciente</div><div class="value" style="color:var(--stone-500)">${excluidosGracia.toLocaleString('es-CL')}</div><div class="sub">ediciones de menos de ${gracia} año${gracia===1?'':'s'} — no evaluadas aún</div></div>
-  `;
+  const vistaKpi = document.getElementById('filtVista').value;
+  if (vistaKpi === 'masprestados') {
+    const totalPrest = filtered.reduce((s, r) => s + (parseInt(r.totalPrestHistorico) || 0), 0);
+    const titulosUnicos = new Set(filtered.map(r => candidatoKey(r))).size;
+    const promPorEjemplar = filtered.length ? round2(totalPrest / filtered.length) : 0;
+    const topGrupo = groupByTitulo(filtered, 'prestamos')[0];
+    document.getElementById('kpiGrid').innerHTML = `
+      <div class="kpi-card"><div class="label">Ejemplares con circulación</div><div class="value rust">${filtered.length.toLocaleString('es-CL')}</div><div class="sub">de ${state.descarte.length.toLocaleString('es-CL')} totales identificados</div></div>
+      <div class="kpi-card"><div class="label">Títulos únicos representados</div><div class="value teal">${titulosUnicos.toLocaleString('es-CL')}</div><div class="sub">signatura + título + autor</div></div>
+      <div class="kpi-card"><div class="label">Préstamos históricos totales</div><div class="value amber">${totalPrest.toLocaleString('es-CL')}</div><div class="sub">en la vista actual</div></div>
+      <div class="kpi-card"><div class="label">Préstamos promedio / ejemplar</div><div class="value">${promPorEjemplar.toLocaleString('es-CL')}</div><div class="sub">en la vista actual</div></div>
+      <div class="kpi-card" style="grid-column:span 2"><div class="label">Título más prestado</div><div class="value" style="font-size:15px;line-height:1.3">${topGrupo ? topGrupo.label.substring(0,60) + (topGrupo.label.length>60?'…':'') : '—'}</div><div class="sub">${topGrupo ? topGrupo.totalPrestamos.toLocaleString('es-CL') + ' préstamos · ' + topGrupo.ejemplares + ' ejemplar(es)' : ''}</div></div>
+      <div class="kpi-card"><div class="label">Calidad de datos</div><div class="value" style="color:${m.dupInventarios.length || m.sinInventarioCount ? 'var(--danger)' : 'var(--teal)'}">${(m.dupInventarios.length + m.sinInventarioCount).toLocaleString('es-CL')}</div><div class="sub">inventarios duplicados / faltantes</div></div>
+    `;
+  } else {
+    document.getElementById('kpiGrid').innerHTML = `
+      <div class="kpi-card"><div class="label">Ejemplares en vista</div><div class="value rust">${filtered.length.toLocaleString('es-CL')}</div><div class="sub">de ${state.descarte.length.toLocaleString('es-CL')} totales identificados</div></div>
+      <div class="kpi-card"><div class="label">Metros lineales estimados</div><div class="value teal">${metros.toLocaleString('es-CL')} m</div><div class="sub">a ${cm} cm/ejemplar</div></div>
+      <div class="kpi-card"><div class="label">≥5 años sin uso — confirmado</div><div class="value amber">${confirmado5mas.toLocaleString('es-CL')}</div><div class="sub">con fecha real de último préstamo</div></div>
+      <div class="kpi-card"><div class="label">Confirmado por grupo</div><div class="value amber">${confirmadoPorGrupo.toLocaleString('es-CL')}</div><div class="sub">misma signatura+título+autor que una copia confirmada</div></div>
+      <div class="kpi-card"><div class="label">Candidatos por exceso de ejemplares</div><div class="value amber">${candidatoPorExceso.toLocaleString('es-CL')}</div><div class="sub">en ${titulosConExceso.toLocaleString('es-CL')} títulos sobre-provistos — criterio independiente de años sin uso</div></div>
+      <div class="kpi-card"><div class="label">Sin evidencia de préstamo</div><div class="value amber">${sinEvidencia.length.toLocaleString('es-CL')}</div><div class="sub">cota mínima ≥${m.cotaMinima} años (sin registro desde ${m.kohaInicio}) — no confirmado</div></div>
+      <div class="kpi-card"><div class="label">Antigüedad edición (sin evidencia)</div><div class="value">${edadProm !== null ? edadProm.toLocaleString('es-CL') + ' años' : '—'}</div><div class="sub">promedio, para priorizar dentro del grupo</div></div>
+      <div class="kpi-card"><div class="label">Calidad de datos</div><div class="value" style="color:${m.dupInventarios.length || m.sinInventarioCount ? 'var(--danger)' : 'var(--teal)'}">${(m.dupInventarios.length + m.sinInventarioCount).toLocaleString('es-CL')}</div><div class="sub">inventarios duplicados / faltantes</div></div>
+      <div class="kpi-card"><div class="label">Excluidos por edición reciente</div><div class="value" style="color:var(--stone-500)">${excluidosGracia.toLocaleString('es-CL')}</div><div class="sub">ediciones de menos de ${gracia} año${gracia===1?'':'s'} — no evaluadas aún</div></div>
+    `;
+  }
 
-  const rulerFill = document.getElementById('rulerFill');
-  const maxRef = Math.max(metros * 1.25, 10);
-  const pctFill = Math.min(100, (metros / maxRef) * 100);
-  rulerFill.style.width = pctFill + '%';
-  document.getElementById('rulerLabel').textContent = metros.toLocaleString('es-CL') + ' m';
-  document.getElementById('rulerScale').innerHTML = `<span>0 m</span><span>${round2(maxRef).toLocaleString('es-CL')} m</span>`;
+  const rulerCard = document.querySelector('.ruler-card');
+  if (vistaKpi === 'masprestados') {
+    if (rulerCard) rulerCard.style.display = 'none';
+  } else {
+    if (rulerCard) rulerCard.style.display = '';
+    const rulerFill = document.getElementById('rulerFill');
+    const maxRef = Math.max(metros * 1.25, 10);
+    const pctFill = Math.min(100, (metros / maxRef) * 100);
+    rulerFill.style.width = pctFill + '%';
+    document.getElementById('rulerLabel').textContent = metros.toLocaleString('es-CL') + ' m';
+    document.getElementById('rulerScale').innerHTML = `<span>0 m</span><span>${round2(maxRef).toLocaleString('es-CL')} m</span>`;
+  }
 }
 
 function estadoBadge(r) {
@@ -1158,11 +1230,11 @@ function estadoBadge(r) {
 
 const THEAD_PLANO = `<tr>
   <th></th><th>Inventario</th><th>Topográfico</th><th>Título</th><th>Autor</th>
-  <th>Área Dewey</th><th>Año ed.</th><th>Último préstamo</th><th>Años sin uso</th>
+  <th>Área Dewey</th><th>Ubicación</th><th>Año ed.</th><th>Último préstamo</th><th>Años sin uso</th>
   <th>Total prést. histórico</th><th>Unidad académica</th><th>Estado</th>
 </tr>`;
 const THEAD_TITULO = `<tr>
-  <th></th><th>Título</th><th>Autor</th><th>Signatura</th><th>Área Dewey</th><th>Ejemplares</th>
+  <th></th><th>Título</th><th>Autor</th><th>Signatura</th><th>Área Dewey</th><th>Ubicación</th><th>Ejemplares</th><th>Préstamos (total título)</th>
   <th>Años sin uso (rango)</th><th colspan="2">Desglose de estados</th>
 </tr>`;
 const THEAD_DEWEY = `<tr>
@@ -1176,6 +1248,7 @@ function nestedRowHtml(r, skipTitulo) {
     <td class="mono" style="white-space:nowrap">${r.topografico}</td>
     ${skipTitulo ? '' : `<td style="max-width:220px;white-space:normal">${r.titulo}</td><td style="color:var(--stone-500)">${r.autor}</td>`}
     <td class="mono" style="color:var(--stone-500)">${r.anioPublicacion || '—'}</td>
+    <td style="white-space:nowrap">${r.ubicacion}</td>
     <td class="mono">${r.ultimoPrestamo}</td>
     <td>${r.aniosSinUso ?? '—'}</td>
     <td class="mono" style="text-align:center">${r.totalPrestHistorico > 0 ? r.totalPrestHistorico.toLocaleString('es-CL') : '—'}</td>
@@ -1193,7 +1266,7 @@ function renderTable(filtered) {
     head.innerHTML = THEAD_PLANO;
     document.getElementById('totalLabel').textContent = `${filtered.length.toLocaleString('es-CL')} ejemplares`;
     if (!filtered.length) {
-      body.innerHTML = '<tr><td colspan="12" style="text-align:center;padding:30px;color:var(--stone-500)">No hay ejemplares que coincidan con los filtros seleccionados</td></tr>';
+      body.innerHTML = '<tr><td colspan="13" style="text-align:center;padding:30px;color:var(--stone-500)">No hay ejemplares que coincidan con los filtros seleccionados</td></tr>';
       return;
     }
     body.innerHTML = filtered.map(r => `
@@ -1204,6 +1277,7 @@ function renderTable(filtered) {
         <td style="max-width:240px;white-space:normal">${r.titulo}</td>
         <td style="color:var(--stone-500)">${r.autor}</td>
         <td>${r.deweynombre}</td>
+        <td style="white-space:nowrap">${r.ubicacion}</td>
         <td class="mono" style="color:var(--stone-500)">${r.anioPublicacion || '—'}</td>
         <td class="mono">${r.ultimoPrestamo}</td>
         <td>${r.aniosSinUso ?? '—'}</td>
@@ -1215,7 +1289,8 @@ function renderTable(filtered) {
     return;
   }
 
-  const groups = mode === 'titulo' ? groupByTitulo(filtered) : groupByDewey(filtered);
+  const vista = document.getElementById('filtVista').value;
+  const groups = mode === 'titulo' ? groupByTitulo(filtered, vista === 'masprestados' ? 'prestamos' : 'ejemplares') : groupByDewey(filtered);
   document.getElementById('totalLabel').textContent =
     `${filtered.length.toLocaleString('es-CL')} ejemplares en ${groups.length.toLocaleString('es-CL')} ${mode === 'titulo' ? 'títulos' : 'áreas Dewey'}`;
 
@@ -1232,21 +1307,26 @@ function renderTable(filtered) {
     const dupWarn = g.dupInGroup ? ' <span class="badge danger" title="Este grupo contiene inventarios duplicados">dup</span>' : '';
     if (mode === 'titulo') {
       const rango = g.minSinUso === null ? 'Sin fecha' : (g.minSinUso === g.maxSinUso ? `${g.minSinUso}` : `${g.minSinUso}–${g.maxSinUso}`);
+      const ubicTxt = g.ubicaciones.length === 1
+        ? g.ubicaciones[0]
+        : `<span title="${g.ubicaciones.join(' · ').replace(/"/g,'&quot;')}">Varias (${g.ubicaciones.length})</span>`;
       html += `<tr class="group-row" onclick="toggleGroup(${i})">
         <td><span class="group-arrow" id="arrow-${i}">▸</span></td>
         <td style="max-width:260px;white-space:normal">${g.label}${dupWarn}</td>
         <td style="color:var(--stone-500);font-weight:400">${g.sublabel}</td>
         <td class="mono" style="font-weight:400;white-space:nowrap">${g.topografico}</td>
         <td style="font-weight:400">${g.deweynombre}</td>
+        <td style="font-weight:400;white-space:nowrap">${ubicTxt}</td>
         <td class="mono">${g.ejemplares}</td>
+        <td class="mono" style="text-align:center;font-weight:600">${g.totalPrestamos > 0 ? g.totalPrestamos.toLocaleString('es-CL') : '—'}</td>
         <td>${rango}</td>
         <td colspan="2" style="font-weight:400;color:var(--stone-500);font-size:11.5px">${estadosResumen(g.estados)}</td>
       </tr>
-      <tr class="group-detail-row" id="detail-${i}"><td colspan="9">
+      <tr class="group-detail-row" id="detail-${i}"><td colspan="11">
         <div class="nested-table-wrap">
           <div class="nested-note">${g.ejemplares} ejemplar(es) de este título — Inventarios:</div>
           <table class="nested">
-            <thead><tr><th>Inventario</th><th>Topográfico</th><th>Año ed.</th><th>Último préstamo</th><th>Años sin uso</th><th>Total prést.</th><th>Unidad académica</th><th>Estado</th></tr></thead>
+            <thead><tr><th>Inventario</th><th>Topográfico</th><th>Año ed.</th><th>Ubicación</th><th>Último préstamo</th><th>Años sin uso</th><th>Total prést.</th><th>Unidad académica</th><th>Estado</th></tr></thead>
             <tbody>${g.items.map(r => nestedRowHtml(r, true)).join('')}</tbody>
           </table>
         </div>
@@ -1263,7 +1343,7 @@ function renderTable(filtered) {
         <div class="nested-table-wrap">
           <div class="nested-note">${g.ejemplares} ejemplar(es) en esta área Dewey — Inventarios:</div>
           <table class="nested">
-            <thead><tr><th>Inventario</th><th>Topográfico</th><th>Título</th><th>Autor</th><th>Año ed.</th><th>Último préstamo</th><th>Años sin uso</th><th>Total prést.</th><th>Unidad académica</th><th>Estado</th></tr></thead>
+            <thead><tr><th>Inventario</th><th>Topográfico</th><th>Título</th><th>Autor</th><th>Año ed.</th><th>Ubicación</th><th>Último préstamo</th><th>Años sin uso</th><th>Total prést.</th><th>Unidad académica</th><th>Estado</th></tr></thead>
             <tbody>${g.items.map(r => nestedRowHtml(r, false)).join('')}</tbody>
           </table>
         </div>
@@ -1291,7 +1371,7 @@ function exportExcel() {
   const cm = state.cmPorEjemplar;
   const m = state.meta;
 
-  const rows = [['Inventario','Topográfico','Título','Autor','Área Dewey','Año ed.','Antigüedad edición','Último préstamo','Años sin uso','Precisión del dato','Total prést. histórico','Unidad académica','Estado','Duplicado','Exceso de ejemplares','Copias del título','Préstamos/copia (título)']];
+  const rows = [['Inventario','Topográfico','Título','Autor','Área Dewey','Ubicación','Año ed.','Antigüedad edición','Último préstamo','Años sin uso','Precisión del dato','Total prést. histórico','Unidad académica','Estado','Duplicado','Exceso de ejemplares','Copias del título','Préstamos/copia (título)']];
   filtered.forEach(r => {
     let precision;
     if (r.confirmadoPorGrupo) precision = 'Confirmado por grupo (otra copia del mismo título sí tiene fecha real)';
@@ -1299,7 +1379,7 @@ function exportExcel() {
     else if (r.fuenteUltimo === 'historial') precision = 'Confirmado';
     else precision = 'Sin fecha';
     rows.push([
-      r.inventario, r.topografico, r.titulo, r.autor, r.deweynombre, r.anioPublicacion || '', r.antiguedadEdicion ?? '',
+      r.inventario, r.topografico, r.titulo, r.autor, r.deweynombre, r.ubicacion, r.anioPublicacion || '', r.antiguedadEdicion ?? '',
       r.ultimoPrestamo, r.aniosSinUso ?? '', precision,
       r.totalPrestHistorico, r.unidad_academica, r.estadoUso, r.duplicado ? 'Sí' : 'No',
       r.esCandidatoPorExceso ? 'Sí' : 'No', r.totalCopiasGrupo ?? '', r.prestamosPorCopia ?? ''
@@ -1343,9 +1423,16 @@ function exportExcel() {
   Object.entries(byUnidad).sort((a,b) => b[1]-a[1]).forEach(([u, n]) => unidadRows.push([u, n, round2((n*cm)/100)]));
   XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(unidadRows), 'Por Unidad Académica');
 
-  const titGroups = groupByTitulo(filtered);
-  const titRows = [['Título', 'Autor', 'Signatura', 'Área Dewey', 'Ejemplares', 'Metros lineales est.', 'Inventarios']];
-  titGroups.forEach(g => titRows.push([g.label, g.sublabel, g.topografico, g.deweynombre, g.ejemplares, round2((g.ejemplares*cm)/100), g.items.map(i => i.inventario).join(', ')]));
+  const byUbicacion = {};
+  filtered.forEach(r => { byUbicacion[r.ubicacion] = (byUbicacion[r.ubicacion] || 0) + 1; });
+  const ubicacionRows = [['Ubicación física', 'Ejemplares', 'Metros lineales est.']];
+  Object.entries(byUbicacion).sort((a,b) => b[1]-a[1]).forEach(([u, n]) => ubicacionRows.push([u, n, round2((n*cm)/100)]));
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(ubicacionRows), 'Por Ubicación');
+
+  const vistaActual = document.getElementById('filtVista').value;
+  const titGroups = groupByTitulo(filtered, vistaActual === 'masprestados' ? 'prestamos' : 'ejemplares');
+  const titRows = [['Título', 'Autor', 'Signatura', 'Área Dewey', 'Ubicación(es)', 'Ejemplares', 'Préstamos (total título)', 'Metros lineales est.', 'Inventarios']];
+  titGroups.forEach(g => titRows.push([g.label, g.sublabel, g.topografico, g.deweynombre, g.ubicaciones.join(' · '), g.ejemplares, g.totalPrestamos, round2((g.ejemplares*cm)/100), g.items.map(i => i.inventario).join(', ')]));
   XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(titRows), 'Por Título');
 
   const gruposExceso = {};
@@ -1373,8 +1460,8 @@ function exportExcel() {
 function exportCSV() {
   const filtered = getFiltered();
   if (!filtered.length) { alert('No hay datos en la vista actual para exportar'); return; }
-  const lines = ['Inventario;Topografico;Titulo;Estado'];
-  filtered.forEach(r => lines.push(`${r.inventario};${r.topografico};"${(r.titulo||'').replace(/"/g,'""')}";${r.estadoUso}`));
+  const lines = ['Inventario;Topografico;Titulo;Ubicacion;Estado'];
+  filtered.forEach(r => lines.push(`${r.inventario};${r.topografico};"${(r.titulo||'').replace(/"/g,'""')}";${r.ubicacion};${r.estadoUso}`));
   const blob = new Blob(['\uFEFF' + lines.join('\n')], { type: 'text/csv;charset=utf-8;' });
   const a = document.createElement('a');
   a.href = URL.createObjectURL(blob);
