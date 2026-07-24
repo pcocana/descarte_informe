@@ -1231,7 +1231,7 @@ function estadoBadge(r) {
 const THEAD_PLANO = `<tr>
   <th></th><th>Inventario</th><th>Topográfico</th><th>Título</th><th>Autor</th>
   <th>Área Dewey</th><th>Ubicación</th><th>Año ed.</th><th>Último préstamo</th><th>Años sin uso</th>
-  <th>Total prést. histórico</th><th>Unidad académica</th><th>Estado</th>
+  <th>Prést. esta copia</th><th>Prést. total título</th><th>Unidad académica</th><th>Estado</th>
 </tr>`;
 const THEAD_TITULO = `<tr>
   <th></th><th>Título</th><th>Autor</th><th>Signatura</th><th>Área Dewey</th><th>Ubicación</th><th>Ejemplares</th><th>Préstamos (total título)</th>
@@ -1266,7 +1266,7 @@ function renderTable(filtered) {
     head.innerHTML = THEAD_PLANO;
     document.getElementById('totalLabel').textContent = `${filtered.length.toLocaleString('es-CL')} ejemplares`;
     if (!filtered.length) {
-      body.innerHTML = '<tr><td colspan="13" style="text-align:center;padding:30px;color:var(--stone-500)">No hay ejemplares que coincidan con los filtros seleccionados</td></tr>';
+      body.innerHTML = '<tr><td colspan="14" style="text-align:center;padding:30px;color:var(--stone-500)">No hay ejemplares que coincidan con los filtros seleccionados</td></tr>';
       return;
     }
     body.innerHTML = filtered.map(r => `
@@ -1282,6 +1282,7 @@ function renderTable(filtered) {
         <td class="mono">${r.ultimoPrestamo}</td>
         <td>${r.aniosSinUso ?? '—'}</td>
         <td class="mono" style="text-align:center">${r.totalPrestHistorico > 0 ? r.totalPrestHistorico.toLocaleString('es-CL') : '—'}</td>
+        <td class="mono" style="text-align:center;font-weight:600" title="Suma de préstamos de todas las copias de este título">${(r.totalPrestamosGrupo ?? r.totalPrestHistorico) > 0 ? (r.totalPrestamosGrupo ?? r.totalPrestHistorico).toLocaleString('es-CL') : '—'}</td>
         <td>${r.unidad_academica}</td>
         <td>${estadoBadge(r)}</td>
       </tr>
@@ -1368,105 +1369,121 @@ function toggleGroup(i) {
 function exportExcel() {
   const filtered = getFiltered();
   if (!filtered.length) { alert('No hay datos en la vista actual para exportar'); return; }
-  const cm = state.cmPorEjemplar;
-  const m = state.meta;
+  if (!window.XLSX) { alert('La librería XLSX no se cargó correctamente. Revisa tu conexión a internet y recarga la página.'); return; }
+  showLoader('Generando archivo Excel…');
+  setTimeout(() => {
+    try {
+      const cm = state.cmPorEjemplar;
+      const m = state.meta;
 
-  const rows = [['Inventario','Topográfico','Título','Autor','Área Dewey','Ubicación','Año ed.','Antigüedad edición','Último préstamo','Años sin uso','Precisión del dato','Total prést. histórico','Unidad académica','Estado','Duplicado','Exceso de ejemplares','Copias del título','Préstamos/copia (título)']];
-  filtered.forEach(r => {
-    let precision;
-    if (r.confirmadoPorGrupo) precision = 'Confirmado por grupo (otra copia del mismo título sí tiene fecha real)';
-    else if (r.esCotaMinima) precision = `Cota mínima (sin registro desde ${m.kohaInicio})`;
-    else if (r.fuenteUltimo === 'historial') precision = 'Confirmado';
-    else precision = 'Sin fecha';
-    rows.push([
-      r.inventario, r.topografico, r.titulo, r.autor, r.deweynombre, r.ubicacion, r.anioPublicacion || '', r.antiguedadEdicion ?? '',
-      r.ultimoPrestamo, r.aniosSinUso ?? '', precision,
-      r.totalPrestHistorico, r.unidad_academica, r.estadoUso, r.duplicado ? 'Sí' : 'No',
-      r.esCandidatoPorExceso ? 'Sí' : 'No', r.totalCopiasGrupo ?? '', r.prestamosPorCopia ?? ''
-    ]);
-  });
-  const wb = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(rows), 'Listado de Descarte');
+      const rows = [['Inventario','Topográfico','Título','Autor','Área Dewey','Ubicación','Año ed.','Antigüedad edición','Último préstamo','Años sin uso','Precisión del dato','Total prést. histórico (esta copia)','Préstamos totales del título (todas las copias)','Unidad académica','Estado','Duplicado','Exceso de ejemplares','Copias del título','Préstamos/copia (título)']];
+      filtered.forEach(r => {
+        let precision;
+        if (r.confirmadoPorGrupo) precision = 'Confirmado por grupo (otra copia del mismo título sí tiene fecha real)';
+        else if (r.esCotaMinima) precision = `Cota mínima (sin registro desde ${m.kohaInicio})`;
+        else if (r.fuenteUltimo === 'historial') precision = 'Confirmado';
+        else precision = 'Sin fecha';
+        rows.push([
+          r.inventario, r.topografico, r.titulo, r.autor, r.deweynombre, r.ubicacion, r.anioPublicacion || '', r.antiguedadEdicion ?? '',
+          r.ultimoPrestamo, r.aniosSinUso ?? '', precision,
+          r.totalPrestHistorico, r.totalPrestamosGrupo ?? r.totalPrestHistorico, r.unidad_academica, r.estadoUso, r.duplicado ? 'Sí' : 'No',
+          r.esCandidatoPorExceso ? 'Sí' : 'No', r.totalCopiasGrupo ?? '', r.prestamosPorCopia ?? ''
+        ]);
+      });
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(rows), 'Listado de Descarte');
 
-  const metros = round2((filtered.length * cm) / 100);
-  const resumenRows = [
-    ['Resumen — Módulo de Descarte', ''],
-    ['Fecha de generación', new Date().toLocaleDateString('es-CL')],
-    ['Año de referencia', m.anioActual],
-    ['Ejemplares en el listado', filtered.length],
-    ['cm por ejemplar', cm],
-    ['Metros lineales estimados liberables', metros],
-    ['Años de gracia por edición reciente aplicados', parseInt(document.getElementById('cfgGracia').value) || 0],
-    ['Excluidos por edición reciente (vista actual)', state._excluidosGracia || 0],
-    ['', ''],
-    ['Registros de préstamo en Koha disponibles desde', m.kohaInicio],
-    ['Cota mínima aplicada a "sin evidencia de préstamo"', `${m.cotaMinima} años`],
-    ['Ejemplares con años sin uso como cota mínima (no confirmado)', filtered.filter(r => r.esCotaMinima).length],
-    ['', ''],
-    ['Inventarios duplicados detectados (catálogo)', m.dupInventarios.length],
-    ['Filas del catálogo sin inventario (excluidas)', m.sinInventarioCount],
-    ['Registros de préstamo sin inventario', m.prestSinInventario],
-    ['', ''],
-    ['Nota', 'El cruce se realiza exclusivamente por número de inventario exacto. Cada fila del listado corresponde a un ejemplar físico único, identificable de forma unívoca para su retiro administrativo y físico. Las ediciones más nuevas que el umbral de "años de gracia" se excluyen de los candidatos por no haber tenido tiempo suficiente de circulación. Los ejemplares sin ningún registro de préstamo reciben una cota mínima de años sin uso (no una estimación optimista), ya que Koha no registra circulación anterior al año indicado — columna "Precisión del dato" distingue esos casos de los confirmados con fecha real.']
-  ];
-  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(resumenRows), 'Resumen');
+      const metros = round2((filtered.length * cm) / 100);
+      const resumenRows = [
+        ['Resumen — Módulo de Descarte', ''],
+        ['Fecha de generación', new Date().toLocaleDateString('es-CL')],
+        ['Año de referencia', m.anioActual],
+        ['Ejemplares en el listado', filtered.length],
+        ['cm por ejemplar', cm],
+        ['Metros lineales estimados liberables', metros],
+        ['Años de gracia por edición reciente aplicados', parseInt(document.getElementById('cfgGracia').value) || 0],
+        ['Excluidos por edición reciente (vista actual)', state._excluidosGracia || 0],
+        ['', ''],
+        ['Registros de préstamo en Koha disponibles desde', m.kohaInicio],
+        ['Cota mínima aplicada a "sin evidencia de préstamo"', `${m.cotaMinima} años`],
+        ['Ejemplares con años sin uso como cota mínima (no confirmado)', filtered.filter(r => r.esCotaMinima).length],
+        ['', ''],
+        ['Inventarios duplicados detectados (catálogo)', m.dupInventarios.length],
+        ['Filas del catálogo sin inventario (excluidas)', m.sinInventarioCount],
+        ['Registros de préstamo sin inventario', m.prestSinInventario],
+        ['', ''],
+        ['Nota', 'El cruce se realiza exclusivamente por número de inventario exacto. Cada fila del listado corresponde a un ejemplar físico único, identificable de forma unívoca para su retiro administrativo y físico. Las ediciones más nuevas que el umbral de "años de gracia" se excluyen de los candidatos por no haber tenido tiempo suficiente de circulación. Los ejemplares sin ningún registro de préstamo reciben una cota mínima de años sin uso (no una estimación optimista), ya que Koha no registra circulación anterior al año indicado — columna "Precisión del dato" distingue esos casos de los confirmados con fecha real.']
+      ];
+      XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(resumenRows), 'Resumen');
 
-  const byDewey = {};
-  filtered.forEach(r => { byDewey[r.deweynombre] = (byDewey[r.deweynombre] || 0) + 1; });
-  const deweyRows = [['Área Dewey', 'Ejemplares', 'Metros lineales est.']];
-  Object.entries(byDewey).sort((a,b) => b[1]-a[1]).forEach(([area, n]) => deweyRows.push([area, n, round2((n*cm)/100)]));
-  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(deweyRows), 'Por Área Dewey');
+      const byDewey = {};
+      filtered.forEach(r => { byDewey[r.deweynombre] = (byDewey[r.deweynombre] || 0) + 1; });
+      const deweyRows = [['Área Dewey', 'Ejemplares', 'Metros lineales est.']];
+      Object.entries(byDewey).sort((a,b) => b[1]-a[1]).forEach(([area, n]) => deweyRows.push([area, n, round2((n*cm)/100)]));
+      XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(deweyRows), 'Por Área Dewey');
 
-  const byUnidad = {};
-  filtered.forEach(r => { byUnidad[r.unidad_academica] = (byUnidad[r.unidad_academica] || 0) + 1; });
-  const unidadRows = [['Unidad académica', 'Ejemplares', 'Metros lineales est.']];
-  Object.entries(byUnidad).sort((a,b) => b[1]-a[1]).forEach(([u, n]) => unidadRows.push([u, n, round2((n*cm)/100)]));
-  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(unidadRows), 'Por Unidad Académica');
+      const byUnidad = {};
+      filtered.forEach(r => { byUnidad[r.unidad_academica] = (byUnidad[r.unidad_academica] || 0) + 1; });
+      const unidadRows = [['Unidad académica', 'Ejemplares', 'Metros lineales est.']];
+      Object.entries(byUnidad).sort((a,b) => b[1]-a[1]).forEach(([u, n]) => unidadRows.push([u, n, round2((n*cm)/100)]));
+      XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(unidadRows), 'Por Unidad Académica');
 
-  const byUbicacion = {};
-  filtered.forEach(r => { byUbicacion[r.ubicacion] = (byUbicacion[r.ubicacion] || 0) + 1; });
-  const ubicacionRows = [['Ubicación física', 'Ejemplares', 'Metros lineales est.']];
-  Object.entries(byUbicacion).sort((a,b) => b[1]-a[1]).forEach(([u, n]) => ubicacionRows.push([u, n, round2((n*cm)/100)]));
-  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(ubicacionRows), 'Por Ubicación');
+      const byUbicacion = {};
+      filtered.forEach(r => { byUbicacion[r.ubicacion] = (byUbicacion[r.ubicacion] || 0) + 1; });
+      const ubicacionRows = [['Ubicación física', 'Ejemplares', 'Metros lineales est.']];
+      Object.entries(byUbicacion).sort((a,b) => b[1]-a[1]).forEach(([u, n]) => ubicacionRows.push([u, n, round2((n*cm)/100)]));
+      XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(ubicacionRows), 'Por Ubicación');
 
-  const vistaActual = document.getElementById('filtVista').value;
-  const titGroups = groupByTitulo(filtered, vistaActual === 'masprestados' ? 'prestamos' : 'ejemplares');
-  const titRows = [['Título', 'Autor', 'Signatura', 'Área Dewey', 'Ubicación(es)', 'Ejemplares', 'Préstamos (total título)', 'Metros lineales est.', 'Inventarios']];
-  titGroups.forEach(g => titRows.push([g.label, g.sublabel, g.topografico, g.deweynombre, g.ubicaciones.join(' · '), g.ejemplares, g.totalPrestamos, round2((g.ejemplares*cm)/100), g.items.map(i => i.inventario).join(', ')]));
-  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(titRows), 'Por Título');
+      const vistaActual = document.getElementById('filtVista').value;
+      const titGroups = groupByTitulo(filtered, vistaActual === 'masprestados' ? 'prestamos' : 'ejemplares');
+      const titRows = [['Título', 'Autor', 'Signatura', 'Área Dewey', 'Ubicación(es)', 'Ejemplares', 'Préstamos (total título)', 'Metros lineales est.', 'Inventarios']];
+      titGroups.forEach(g => titRows.push([g.label, g.sublabel, g.topografico, g.deweynombre, g.ubicaciones.join(' · '), g.ejemplares, g.totalPrestamos, round2((g.ejemplares*cm)/100), g.items.map(i => i.inventario).join(', ')]));
+      XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(titRows), 'Por Título');
 
-  const gruposExceso = {};
-  filtered.forEach(r => { if (r.esGrupoExcedente) { const key = candidatoKey(r); if (!gruposExceso[key]) gruposExceso[key] = r; } });
-  if (Object.keys(gruposExceso).length > 0) {
-    const excesoRows = [['Título', 'Autor', 'Signatura', 'Copias totales', 'Préstamos totales (histórico)', 'Préstamos/copia', 'Copias sugeridas a conservar', 'Copias candidatas a reducir', 'Inventarios candidatos a reducir']];
-    Object.values(gruposExceso).forEach(r => {
-      const grupo = state.descarte.filter(x => candidatoKey(x) === candidatoKey(r));
-      const candidatos = grupo.filter(x => x.esCandidatoPorExceso);
-      const conservar = parseInt(document.getElementById('cfgCopiasConservar').value);
-      excesoRows.push([r.titulo, r.autor, r.topografico, r.totalCopiasGrupo, r.totalPrestamosGrupo, r.prestamosPorCopia, isNaN(conservar) ? 1 : conservar, candidatos.length, candidatos.map(c => c.inventario).join(', ')]);
-    });
-    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(excesoRows), 'Exceso de Ejemplares');
-  }
+      const gruposExceso = {};
+      filtered.forEach(r => { if (r.esGrupoExcedente) { const key = candidatoKey(r); if (!gruposExceso[key]) gruposExceso[key] = r; } });
+      if (Object.keys(gruposExceso).length > 0) {
+        const excesoRows = [['Título', 'Autor', 'Signatura', 'Copias totales', 'Préstamos totales (histórico)', 'Préstamos/copia', 'Copias sugeridas a conservar', 'Copias candidatas a reducir', 'Inventarios candidatos a reducir']];
+        Object.values(gruposExceso).forEach(r => {
+          const grupo = state.descarte.filter(x => candidatoKey(x) === candidatoKey(r));
+          const candidatos = grupo.filter(x => x.esCandidatoPorExceso);
+          const conservar = parseInt(document.getElementById('cfgCopiasConservar').value);
+          excesoRows.push([r.titulo, r.autor, r.topografico, r.totalCopiasGrupo, r.totalPrestamosGrupo, r.prestamosPorCopia, isNaN(conservar) ? 1 : conservar, candidatos.length, candidatos.map(c => c.inventario).join(', ')]);
+        });
+        XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(excesoRows), 'Exceso de Ejemplares');
+      }
 
-  if (m.dupInventarios.length > 0) {
-    const dupRows = [['Inventarios duplicados detectados en el catálogo — revisar antes de ejecutar el descarte']];
-    m.dupInventarios.forEach(inv => dupRows.push([inv]));
-    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(dupRows), 'Alertas de calidad');
-  }
+      if (m.dupInventarios.length > 0) {
+        const dupRows = [['Inventarios duplicados detectados en el catálogo — revisar antes de ejecutar el descarte']];
+        m.dupInventarios.forEach(inv => dupRows.push([inv]));
+        XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(dupRows), 'Alertas de calidad');
+      }
 
-  XLSX.writeFile(wb, `Descarte_PUCV_${new Date().toISOString().slice(0,10)}.xlsx`);
+      XLSX.writeFile(wb, `Descarte_PUCV_${new Date().toISOString().slice(0,10)}.xlsx`);
+      hideLoader();
+    } catch (err) {
+      hideLoader();
+      console.error(err);
+      alert('Error al generar el Excel: ' + err.message + '\n\nRevisa la consola del navegador (F12) para más detalle, o cuéntame el mensaje exacto para corregirlo.');
+    }
+  }, 50);
 }
 
 function exportCSV() {
   const filtered = getFiltered();
   if (!filtered.length) { alert('No hay datos en la vista actual para exportar'); return; }
-  const lines = ['Inventario;Topografico;Titulo;Ubicacion;Estado'];
-  filtered.forEach(r => lines.push(`${r.inventario};${r.topografico};"${(r.titulo||'').replace(/"/g,'""')}";${r.ubicacion};${r.estadoUso}`));
-  const blob = new Blob(['\uFEFF' + lines.join('\n')], { type: 'text/csv;charset=utf-8;' });
-  const a = document.createElement('a');
-  a.href = URL.createObjectURL(blob);
-  a.download = `Descarte_Inventarios_PUCV_${new Date().toISOString().slice(0,10)}.csv`;
-  a.click();
+  try {
+    const lines = ['Inventario;Topografico;Titulo;Ubicacion;Estado'];
+    filtered.forEach(r => lines.push(`${r.inventario};${r.topografico};"${(r.titulo||'').replace(/"/g,'""')}";${r.ubicacion};${r.estadoUso}`));
+    const blob = new Blob(['\uFEFF' + lines.join('\n')], { type: 'text/csv;charset=utf-8;' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = `Descarte_Inventarios_PUCV_${new Date().toISOString().slice(0,10)}.csv`;
+    a.click();
+  } catch (err) {
+    console.error(err);
+    alert('Error al generar el CSV: ' + err.message);
+  }
 }
 
 /* ============================================================
