@@ -449,6 +449,10 @@ footer.methodology li { margin-bottom: 4px; }
       <label title="De un título con exceso de ejemplares, cuántas copias conservar (se priorizan las de uso más reciente / más préstamos)">Copias a conservar ℹ</label>
       <input type="number" id="cfgCopiasConservar" value="1" min="0" max="20" step="1" onchange="if(state.meta) applyFiltros();">
     </div>
+    <div class="field">
+      <label title="Cantidad de ejemplares que necesitas retirar en total (por ejemplo, la meta acordada con la comisión de acreditación). Se usa solo en la vista '🎯 Selección priorizada para meta'.">Meta de ejemplares a descartar ℹ</label>
+      <input type="number" id="cfgMeta" value="1800" min="1" step="1" onchange="if(state.meta) applyFiltros();">
+    </div>
     <button class="btn-primary" id="processBtn" onclick="processData()" style="display:none;">⚙ Procesar y generar listado</button>
     <button class="btn-danger-text" onclick="clearAll()">Limpiar todo</button>
   </div>
@@ -468,6 +472,7 @@ footer.methodology li { margin-bottom: 4px; }
       <div class="field">
         <label>Vista</label>
         <select id="filtVista" onchange="onVistaChange()">
+          <option value="meta">🎯 Selección priorizada para meta de descarte</option>
           <option value="rapida">⚡ Acción rápida — confirmado ≥5 años (individual o por grupo)</option>
           <option value="exceso">📚 Exceso de ejemplares (independiente de años sin uso)</option>
           <option value="candidatos">Candidatos (≥1 año sin uso o sin evidencia de préstamo)</option>
@@ -547,6 +552,7 @@ footer.methodology li { margin-bottom: 4px; }
       <li><strong>Ubicación física:</strong> se toma de la columna "Espacio, Estantería o Acceso" del catálogo. Las celdas vacías se asumen como <strong>Colección General (estantería abierta)</strong>, ya que es el criterio por defecto del sistema para los ejemplares sin una ubicación especial asignada (Mesón de Circulación, Alta Demanda, Fondo Cultural, etc.).</li>
       <li><strong>Ejemplares sin ningún registro de préstamo:</strong> Koha solo registra circulación desde el año configurado en "Registros Koha desde" (por defecto 2019), por lo que un ejemplar sin registro no significa necesariamente que nunca haya circulado — solo que no hay evidencia desde esa fecha. En vez de excluirlos del análisis por años sin uso o inflar el número asumiendo que nunca se han prestado, se les asigna una <strong>cota mínima garantizada</strong> (año actual − año de inicio de Koha) de años sin uso, marcada explícitamente como "≥ cota mínima" en la tabla y en el Excel exportado (columna "Precisión del dato"), para distinguirlos de los casos con fecha real confirmada. Como criterio complementario para priorizar dentro de este grupo — ya que no hay dato de circulación real que ayude a decidir — se puede ordenar la tabla por <strong>antigüedad de la edición</strong>: entre dos ejemplares sin evidencia de préstamo, el de edición más antigua es un candidato más sólido a descarte por obsolescencia de contenido.</li>
       <li><strong>Confirmado por grupo:</strong> cuando un título tiene varias copias (mismas signatura + título + autor), a veces Koha solo vinculó préstamos a algunas de ellas. Si al menos una copia tiene un registro confirmado de ≥5 años sin uso, sus copias hermanas sin evidencia individual se incluyen en la vista de "Acción rápida" y se marcan como "confirmado por grupo" — no es un dato propio de esa copia puntual, sino inferido de otra copia idéntica con historial real. Esto evita que la vista de acción rápida subestime el número de candidatos solo porque el registro de préstamos no cubrió todas las copias de un mismo título.</li>
+      <li><strong>Selección priorizada para meta de descarte:</strong> cuando la meta institucional (campo "Meta de ejemplares a descartar") supera lo que arroja el criterio confirmado por sí solo, esta vista completa la diferencia dentro del grupo de "sin evidencia de préstamo" de forma trazable en vez de un corte arbitrario. Ordena todo el universo evaluable (excluyendo ediciones en gracia) en 4 niveles de confianza decrecientes — 1) confirmado individual, 2) confirmado por grupo, 3) exceso de ejemplares, 4) sin evidencia ordenado por antigüedad de edición (más antigua primero) — y toma los primeros N hasta cubrir la meta. Cada ejemplar queda marcado con su posición y su nivel, tanto en la tabla como en el Excel exportado. Esta selección <strong>no reemplaza el juicio bibliotecológico</strong>: no incorpora relevancia curricular (cruce con las bibliografías vigentes de los programas) ni estado físico/deterioro, por lo que se recomienda cruzarla con esas fuentes antes de ejecutar la baja definitiva.</li>
       <li><strong>Exceso de ejemplares (criterio independiente de "años sin uso"):</strong> que una copia de un título con muchas copias se haya prestado hace poco es un indicio de que el título sigue vigente, pero no significa que todas sus copias deban conservarse — puede tratarse de un título sobre-adquirido para la demanda real. Este criterio evalúa cada título por su <strong>demanda histórica total</strong> (suma de préstamos de todas sus copias) frente a la <strong>cantidad de copias</strong> que existen: si un título tiene la cantidad mínima de copias configurada o más y el promedio de préstamos por copia es menor al umbral configurado, se marca como "sobre-provisto", se sugiere conservar solo N copias (las de más uso real) y el resto se marca como "candidato por exceso" — incluso si esa copia puntual muestra actividad reciente. Es un criterio complementario, no reemplaza el análisis por años sin uso: una copia puede aparecer marcada por ambos criterios, por uno solo, o por ninguno. Los umbrales (copias mínimas, préstamos esperados por copia, copias a conservar) son configurables y reflejan una decisión de política bibliotecaria, no un estándar externo.</li>
     </ul>
   </footer>
@@ -1071,6 +1077,90 @@ function computeExcesoMap() {
   return map;
 }
 
+// -----------------------------------------------------------
+// SELECCIÓN PRIORIZADA PARA META DE DESCARTE
+//
+// Cuando la meta institucional (ej. cantidad de ejemplares a retirar
+// acordada con la comisión de acreditación) supera lo que arroja el criterio
+// "confirmado" por sí solo, es necesario completar la diferencia dentro del
+// grupo mucho más grande de "sin evidencia de préstamo" (cota mínima). Esta
+// función ordena TODO el universo evaluable en 4 niveles de confianza
+// decrecientes y entrega, en orden, los primeros N ejemplares hasta cubrir
+// la meta configurada — para que la selección dentro del grupo grande no sea
+// arbitraria sino trazable y defendible:
+//
+//   Nivel 1 — Confirmado individual: fecha real de último préstamo, ≥5 años.
+//   Nivel 2 — Confirmado por grupo: sin fecha propia, pero una copia hermana
+//             (misma signatura+título+autor) sí tiene fecha real confirmada.
+//   Nivel 3 — Exceso de ejemplares: título sobre-provisto frente a su demanda
+//             histórica real (criterio independiente de años sin uso).
+//   Nivel 4 — Sin evidencia de préstamo (cota mínima): no hay ningún dato de
+//             circulación real. Se ordena por ANTIGÜEDAD DE EDICIÓN (más
+//             antigua primero) como criterio complementario de priorización,
+//             ya que no hay dato de uso real que ayude a decidir dentro de
+//             este grupo.
+//
+// Se excluyen siempre las ediciones en período de gracia. Esta selección NO
+// incorpora relevancia curricular (cruce con bibliografías de los programas)
+// ni estado físico/deterioro — quien la use debería cruzarla con esas
+// fuentes antes de ejecutar la baja definitiva.
+// -----------------------------------------------------------
+function computeMetaSelection() {
+  const meta = parseInt(document.getElementById('cfgMeta').value) || 0;
+  const excesoMap = computeExcesoMap();
+  state.descarte.forEach(r => Object.assign(r, excesoMap[r.inventario] || {}));
+
+  const universo = state.descarte.filter(r => !isEnGracia(r));
+
+  const n1 = universo.filter(r => r.fuenteUltimo === 'historial' && r.aniosSinUso !== null && r.aniosSinUso >= 5)
+    .sort((a, b) => (b.aniosSinUso ?? 0) - (a.aniosSinUso ?? 0));
+  const n1Set = new Set(n1);
+
+  const n2 = universo.filter(r => !n1Set.has(r) && r.confirmadoPorGrupo)
+    .sort((a, b) => (b.aniosSinUso ?? 0) - (a.aniosSinUso ?? 0));
+  const n2Set = new Set(n2);
+
+  const n3 = universo.filter(r => !n1Set.has(r) && !n2Set.has(r) && r.esCandidatoPorExceso)
+    .sort((a, b) => (a.prestamosPorCopia ?? 0) - (b.prestamosPorCopia ?? 0) || (b.totalCopiasGrupo ?? 0) - (a.totalCopiasGrupo ?? 0));
+  const n3Set = new Set(n3);
+
+  const n4 = universo.filter(r => !n1Set.has(r) && !n2Set.has(r) && !n3Set.has(r) && r.esCotaMinima)
+    .sort((a, b) => (b.antiguedadEdicion ?? -1) - (a.antiguedadEdicion ?? -1));
+
+  const tiers = [
+    { key: 'n1', label: 'Nivel 1 — confirmado', rows: n1 },
+    { key: 'n2', label: 'Nivel 2 — confirmado por grupo', rows: n2 },
+    { key: 'n3', label: 'Nivel 3 — exceso de ejemplares', rows: n3 },
+    { key: 'n4', label: 'Nivel 4 — sin evidencia (por antigüedad de edición)', rows: n4 }
+  ];
+
+  const ordenada = [];
+  tiers.forEach(t => t.rows.forEach(r => ordenada.push(r)));
+  ordenada.forEach((r, i) => {
+    r.metaPosicion = i + 1;
+    const t = tiers.find(t => t.rows.includes(r));
+    r.metaTier = t ? t.label : '';
+    r.metaTierKey = t ? t.key : '';
+  });
+
+  const disponibles = ordenada.length;
+  const objetivo = Math.min(meta, disponibles);
+  const seleccion = ordenada.slice(0, objetivo);
+  const selSet = new Set(seleccion);
+
+  state._metaInfo = {
+    meta, disponibles, objetivo,
+    faltante: Math.max(0, meta - disponibles),
+    porNivel: tiers.map(t => ({
+      label: t.label,
+      total: t.rows.length,
+      enSeleccion: t.rows.filter(r => selSet.has(r)).length
+    }))
+  };
+
+  return seleccion;
+}
+
 function getFiltered() {
   const vista = document.getElementById('filtVista').value;
   const dewey = document.getElementById('filtDewey').value;
@@ -1082,7 +1172,8 @@ function getFiltered() {
   state.descarte.forEach(r => Object.assign(r, excesoMap[r.inventario] || {}));
 
   let filtered = state.descarte;
-  if (vista === 'rapida') filtered = filtered.filter(r => (r.fuenteUltimo === 'historial' && r.aniosSinUso !== null && r.aniosSinUso >= 5) || r.confirmadoPorGrupo);
+  if (vista === 'meta') filtered = computeMetaSelection();
+  else if (vista === 'rapida') filtered = filtered.filter(r => (r.fuenteUltimo === 'historial' && r.aniosSinUso !== null && r.aniosSinUso >= 5) || r.confirmadoPorGrupo);
   else if (vista === 'exceso') filtered = filtered.filter(r => r.esCandidatoPorExceso);
   else if (vista === 'candidatos') filtered = filtered.filter(r => (r.aniosSinUso !== null && r.aniosSinUso >= 1) || r.fuenteUltimo === 'ninguno');
   else if (vista === '5mas') filtered = filtered.filter(r => r.aniosSinUso !== null && r.aniosSinUso >= 5);
@@ -1097,7 +1188,7 @@ function getFiltered() {
   // tiempo suficiente en la biblioteca para evaluarse con justicia. No aplica a
   // "Todo el catálogo" ni a "Más prestados", donde el criterio de gracia no es relevante.
   state._excluidosGracia = 0;
-  if (vista !== 'todos' && vista !== 'masprestados') {
+  if (vista !== 'todos' && vista !== 'masprestados' && vista !== 'meta') {
     const antes = filtered.length;
     filtered = filtered.filter(r => !isEnGracia(r));
     state._excluidosGracia = antes - filtered.length;
@@ -1106,6 +1197,12 @@ function getFiltered() {
   if (dewey) filtered = filtered.filter(r => r.deweynombre === dewey);
   if (unidad) filtered = filtered.filter(r => r.unidad_academica === unidad);
   if (ubicacion) filtered = filtered.filter(r => r.ubicacion === ubicacion);
+
+  if (vista === 'meta') {
+    // La vista de meta ya viene ordenada por nivel de prioridad; no se resortea.
+    filtered = [...filtered].sort((a, b) => a.metaPosicion - b.metaPosicion);
+    return filtered;
+  }
 
   if (orden === 'sinuso') filtered = [...filtered].sort((a, b) => (b.aniosSinUso ?? 999) - (a.aniosSinUso ?? 999));
   else if (orden === 'prestamos') filtered = [...filtered].sort((a, b) => (parseInt(b.totalPrestHistorico) || 0) - (parseInt(a.totalPrestHistorico) || 0));
@@ -1127,6 +1224,10 @@ function onVistaChange() {
     state._groupPrevio = groupSel.value;
     ordenSel.value = 'prestamos';
     groupSel.value = 'titulo';
+  } else if (vista === 'meta') {
+    state._ordenPrevio = ordenSel.value;
+    state._groupPrevio = groupSel.value;
+    groupSel.value = 'none';
   } else if (state._ordenPrevio !== undefined) {
     ordenSel.value = state._ordenPrevio;
     groupSel.value = state._groupPrevio;
@@ -1143,7 +1244,14 @@ function applyFiltros() {
   renderTable(filtered);
   const banner = document.getElementById('rapidaBanner');
   const vista = document.getElementById('filtVista').value;
-  if (vista === 'rapida') {
+  if (vista === 'meta') {
+    const mi = state._metaInfo || {};
+    const gapTxt = mi.faltante > 0
+      ? ` <strong style="color:var(--danger)">Atención: el universo evaluable (${mi.disponibles.toLocaleString('es-CL')}) no alcanza la meta de ${mi.meta.toLocaleString('es-CL')} — faltan ${mi.faltante.toLocaleString('es-CL')} ejemplares.</strong> Revisa si corresponde bajar el umbral de años de gracia, ampliar el criterio de exceso de ejemplares, o aceptar una meta menor.`
+      : ` Se completó la meta de ${mi.meta.toLocaleString('es-CL')} ejemplares.`;
+    banner.innerHTML = `🎯 <strong>Selección priorizada para meta de descarte:</strong> ordena todo el universo evaluable en 4 niveles de confianza decrecientes y toma los primeros ${mi.objetivo ? mi.objetivo.toLocaleString('es-CL') : '0'} para cubrir la meta configurada — <strong>Nivel 1</strong> confirmado individual (fecha real, ≥5 años), <strong>Nivel 2</strong> confirmado por grupo (copia hermana con fecha real), <strong>Nivel 3</strong> exceso de ejemplares (título sobre-provisto), <strong>Nivel 4</strong> sin evidencia de préstamo ordenado por antigüedad de edición (más antigua primero, ya que no hay dato de uso real para priorizar dentro de este grupo). Esta selección <strong>no incorpora relevancia curricular</strong> (cruce con bibliografías de los programas) ni estado físico — se recomienda cruzarla con esas fuentes antes de ejecutar la baja definitiva.${gapTxt}`;
+    banner.classList.add('visible');
+  } else if (vista === 'rapida') {
     banner.innerHTML = `⚡ <strong>Vista de acción rápida:</strong> incluye ejemplares con <strong>fecha real confirmada</strong> de último préstamo (${state.meta.anioActual - 5} o antes), <strong>más</strong> las copias sin registro propio que comparten signatura + título + autor con una copia confirmada — ya que Koha a veces solo registra préstamos de algunas copias de un mismo título, no de todas. Excluye el resto de "sin evidencia de préstamo" que no tiene ningún respaldo, ni siquiera indirecto, y las ediciones en período de gracia. Sigue siendo un número acotado y trazable — pensado para ejecutar sin necesitar un análisis más profundo.`;
     banner.classList.add('visible');
   } else if (vista === 'exceso') {
@@ -1175,7 +1283,19 @@ function renderKpis(filtered) {
   const edadProm = edadVals.length ? Math.round(edadVals.reduce((a,b) => a+b, 0) / edadVals.length) : null;
 
   const vistaKpi = document.getElementById('filtVista').value;
-  if (vistaKpi === 'masprestados') {
+  if (vistaKpi === 'meta') {
+    const mi = state._metaInfo || { meta: 0, disponibles: 0, objetivo: 0, faltante: 0, porNivel: [] };
+    const nivelCards = mi.porNivel.map(n => `
+      <div class="kpi-card"><div class="label">${n.label}</div><div class="value" style="font-size:19px">${n.enSeleccion.toLocaleString('es-CL')}</div><div class="sub">de ${n.total.toLocaleString('es-CL')} disponibles en este nivel</div></div>
+    `).join('');
+    document.getElementById('kpiGrid').innerHTML = `
+      <div class="kpi-card"><div class="label">Meta configurada</div><div class="value rust">${mi.meta.toLocaleString('es-CL')}</div><div class="sub">ejemplares objetivo</div></div>
+      <div class="kpi-card"><div class="label">Cubiertos por la selección</div><div class="value teal">${mi.objetivo.toLocaleString('es-CL')}</div><div class="sub">${metros.toLocaleString('es-CL')} m lineales estimados</div></div>
+      <div class="kpi-card"><div class="label">Universo evaluable total</div><div class="value">${mi.disponibles.toLocaleString('es-CL')}</div><div class="sub">excluye ediciones en período de gracia</div></div>
+      <div class="kpi-card"><div class="label">Faltante</div><div class="value" style="color:${mi.faltante>0?'var(--danger)':'var(--teal)'}">${mi.faltante.toLocaleString('es-CL')}</div><div class="sub">${mi.faltante>0?'la meta supera el universo evaluable':'meta alcanzable'}</div></div>
+      ${nivelCards}
+    `;
+  } else if (vistaKpi === 'masprestados') {
     const totalPrest = filtered.reduce((s, r) => s + (parseInt(r.totalPrestHistorico) || 0), 0);
     const titulosUnicos = new Set(filtered.map(r => candidatoKey(r))).size;
     const promPorEjemplar = filtered.length ? round2(totalPrest / filtered.length) : 0;
@@ -1269,9 +1389,10 @@ function renderTable(filtered) {
       body.innerHTML = '<tr><td colspan="14" style="text-align:center;padding:30px;color:var(--stone-500)">No hay ejemplares que coincidan con los filtros seleccionados</td></tr>';
       return;
     }
+    const vistaFlat = document.getElementById('filtVista').value;
     body.innerHTML = filtered.map(r => `
       <tr class="${r.duplicado ? 'dup' : ''}">
-        <td></td>
+        <td class="mono" style="color:var(--stone-500);text-align:center">${vistaFlat === 'meta' ? r.metaPosicion : ''}</td>
         <td class="mono">${r.inventario}${r.duplicado ? ' <span class="badge danger" title="Inventario duplicado en el catálogo">dup</span>' : ''}</td>
         <td class="mono" style="white-space:nowrap">${r.topografico}</td>
         <td style="max-width:240px;white-space:normal">${r.titulo}</td>
@@ -1284,7 +1405,7 @@ function renderTable(filtered) {
         <td class="mono" style="text-align:center">${r.totalPrestHistorico > 0 ? r.totalPrestHistorico.toLocaleString('es-CL') : '—'}</td>
         <td class="mono" style="text-align:center;font-weight:600" title="Suma de préstamos de todas las copias de este título">${(r.totalPrestamosGrupo ?? r.totalPrestHistorico) > 0 ? (r.totalPrestamosGrupo ?? r.totalPrestHistorico).toLocaleString('es-CL') : '—'}</td>
         <td>${r.unidad_academica}</td>
-        <td>${estadoBadge(r)}</td>
+        <td>${estadoBadge(r)}${vistaFlat === 'meta' && r.metaTier ? ` <span class="badge" style="background:var(--stone-300);color:var(--stone-900)" title="Nivel de prioridad asignado en la selección para meta de descarte">${r.metaTier}</span>` : ''}</td>
       </tr>
     `).join('');
     return;
@@ -1376,22 +1497,43 @@ function exportExcel() {
       const cm = state.cmPorEjemplar;
       const m = state.meta;
 
-      const rows = [['Inventario','Topográfico','Título','Autor','Área Dewey','Ubicación','Año ed.','Antigüedad edición','Último préstamo','Años sin uso','Precisión del dato','Total prést. histórico (esta copia)','Préstamos totales del título (todas las copias)','Unidad académica','Estado','Duplicado','Exceso de ejemplares','Copias del título','Préstamos/copia (título)']];
+      const vistaExport = document.getElementById('filtVista').value;
+      const esMeta = vistaExport === 'meta';
+      const headerBase = ['Inventario','Topográfico','Título','Autor','Área Dewey','Ubicación','Año ed.','Antigüedad edición','Último préstamo','Años sin uso','Precisión del dato','Total prést. histórico (esta copia)','Préstamos totales del título (todas las copias)','Unidad académica','Estado','Duplicado','Exceso de ejemplares','Copias del título','Préstamos/copia (título)'];
+      const rows = [esMeta ? ['Posición','Nivel de prioridad', ...headerBase] : headerBase];
       filtered.forEach(r => {
         let precision;
         if (r.confirmadoPorGrupo) precision = 'Confirmado por grupo (otra copia del mismo título sí tiene fecha real)';
         else if (r.esCotaMinima) precision = `Cota mínima (sin registro desde ${m.kohaInicio})`;
         else if (r.fuenteUltimo === 'historial') precision = 'Confirmado';
         else precision = 'Sin fecha';
-        rows.push([
+        const fila = [
           r.inventario, r.topografico, r.titulo, r.autor, r.deweynombre, r.ubicacion, r.anioPublicacion || '', r.antiguedadEdicion ?? '',
           r.ultimoPrestamo, r.aniosSinUso ?? '', precision,
           r.totalPrestHistorico, r.totalPrestamosGrupo ?? r.totalPrestHistorico, r.unidad_academica, r.estadoUso, r.duplicado ? 'Sí' : 'No',
           r.esCandidatoPorExceso ? 'Sí' : 'No', r.totalCopiasGrupo ?? '', r.prestamosPorCopia ?? ''
-        ]);
+        ];
+        rows.push(esMeta ? [r.metaPosicion, r.metaTier, ...fila] : fila);
       });
       const wb = XLSX.utils.book_new();
-      XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(rows), 'Listado de Descarte');
+      XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(rows), esMeta ? 'Selección para Meta' : 'Listado de Descarte');
+
+      if (esMeta) {
+        const mi = state._metaInfo || { meta: 0, disponibles: 0, objetivo: 0, faltante: 0, porNivel: [] };
+        const metaRows = [
+          ['Selección priorizada para meta de descarte', ''],
+          ['Meta configurada', mi.meta],
+          ['Universo evaluable total (excluye ediciones en gracia)', mi.disponibles],
+          ['Ejemplares cubiertos por la selección', mi.objetivo],
+          ['Faltante frente a la meta', mi.faltante],
+          ['', ''],
+          ['Nivel', 'Incluidos en la selección', 'Disponibles en el nivel']
+        ];
+        mi.porNivel.forEach(n => metaRows.push([n.label, n.enSeleccion, n.total]));
+        metaRows.push(['', '']);
+        metaRows.push(['Nota', 'Esta selección no incorpora relevancia curricular (cruce con bibliografías de los programas) ni estado físico/deterioro. Se recomienda cruzarla con esas fuentes antes de ejecutar la baja definitiva.']);
+        XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(metaRows), 'Resumen Meta');
+      }
 
       const metros = round2((filtered.length * cm) / 100);
       const resumenRows = [
